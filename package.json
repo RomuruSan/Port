@@ -1,0 +1,14 @@
+{
+  "name": "port-haunting-ground",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Preparação de Haunting Ground para PC usando o motor nativo OpenHuey.",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test",
+    "native:setup": "python3 tools/setup_native.py"
+  }
+}
