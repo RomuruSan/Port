@@ -16,7 +16,7 @@ const uuid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 const jobDir = id => { if (!uuid.test(id)) throw new Error('Projeto inválido.'); return join(data, 'projects', id); };
 const getReport = id => { const r = reports.get(id); if (!r) throw new Error('Projeto não encontrado.'); return r; };
 const persistSettings = () => fs.writeFile(join(data, 'settings.json'), JSON.stringify(settings, null, 2));
-const state = async () => ({ version: app.getVersion(), platform: process.platform, busy: Boolean(active), tools: await modules.ghidra.checkTools(settings), settings: { maxFunctions: settings.maxFunctions || 1000 }, reports: [...reports.values()].map(r => ({ id: r.id, title: r.title, platform: r.platform, kind: r.kind, createdAt: r.createdAt, status: r.status })).reverse(), dataDirectory: data });
+const state = async () => ({ version: app.getVersion(), platform: process.platform, busy: Boolean(active), tools: await modules.ghidra.checkTools(settings), settings: { maxFunctions: settings.maxFunctions ?? 0 }, reports: [...reports.values()].map(r => ({ id: r.id, title: r.title, platform: r.platform, kind: r.kind, createdAt: r.createdAt, status: r.status })).reverse(), dataDirectory: data });
 
 async function task(label, action) {
   if (active) throw new Error('Aguarde ou cancele a operação atual.');
@@ -44,8 +44,8 @@ function handle(channel, callback) {
 }
 
 async function initialize() {
-  const [analyzer, ghidra, toolchain] = await Promise.all(['analyzer', 'ghidra', 'toolchain'].map(name => import(pathToFileURL(join(ROOT, `src/${name}.js`)).href)));
-  modules = { analyzer, ghidra, toolchain }; data = app.getPath('userData');
+  const [analyzer, ghidra, toolchain, gameCode, projectExport] = await Promise.all(['analyzer', 'ghidra', 'toolchain', 'game-code', 'project-export'].map(name => import(pathToFileURL(join(ROOT, `src/${name}.js`)).href)));
+  modules = { analyzer, ghidra, toolchain, gameCode, projectExport }; data = app.getPath('userData');
   await fs.mkdir(join(data, 'projects'), { recursive: true });
   try { settings = JSON.parse(await fs.readFile(join(data, 'settings.json'), 'utf8')); } catch { settings = {}; }
   for (const item of await fs.readdir(join(data, 'projects'), { withFileTypes: true })) {
@@ -90,11 +90,12 @@ async function initialize() {
     if (!artifact) throw new Error('Executável não encontrado.');
     const tools = await ghidra.checkTools(settings); let log = '';
     const scriptDir = join(ROOT.replace(/app\.asar([\\/]|$)/, 'app.asar.unpacked$1'), 'ghidra_scripts');
-    const result = await ghidra.decompileArtifact({ artifact, tools, outputDir: join(jobDir(id), 'ghidra', randomUUID()), scriptDir, maxFunctions: settings.maxFunctions || 1000, signal, onLog: message => {
+    const result = await ghidra.decompileArtifact({ artifact, tools, outputDir: join(jobDir(id), 'ghidra', randomUUID()), scriptDir, maxFunctions: settings.maxFunctions ?? 0, signal, onLog: message => {
       log = (log + message).slice(-100000); onProgress({ stage: 'decompiling', message: 'Ghidra: autoanálise e exportação de pseudocódigo…', log });
     } });
     const { functions, ...summary } = result;
     artifact.decompilation = summary; artifact.decompilationLog = log;
+    artifact.codeStatus = summary.limited || summary.failed ? 'partial' : 'exported'; delete artifact.decompilationFailure;
     await analyzer.saveReport(jobDir(id), report); return report;
   }));
   handle('analysis:functions', async (id, artifactId) => {
@@ -117,6 +118,33 @@ async function initialize() {
     await fs.writeFile(target, extname(target).toLowerCase() === '.json' ? JSON.stringify(report, null, 2) : analyzer.reportMarkdown(report)); return target;
   });
   handle('report:folder', async id => { const error = await shell.openPath(jobDir(getReport(id).id)); if (error) throw new Error(error); });
+  const exportCode = async (id, runAnalysis) => {
+    if (active) throw new Error('Aguarde ou cancele a operação atual.');
+    const report = getReport(id);
+    if (runAnalysis && report.kind === 'firmware') throw new Error('Abra a ISO ou um executável do jogo. A BIOS contém firmware.');
+    const result = await dialog.showOpenDialog(win, { title: 'Escolha onde salvar — será criada uma subpasta nova para os resultados', defaultPath: settings.outputDirectory || app.getPath('documents'), properties: ['openDirectory', 'createDirectory'] });
+    if (result.canceled) return null;
+    settings.outputDirectory = result.filePaths[0]; await persistSettings();
+    return task(runAnalysis ? 'Busca, decompilação e exportação de código' : 'Exportação dos resultados disponíveis', async (signal, onProgress) => {
+      if (runAnalysis) {
+        const tools = await ghidra.checkTools(settings);
+        const scriptDir = join(ROOT.replace(/app\.asar([\\/]|$)/, 'app.asar.unpacked$1'), 'ghidra_scripts');
+        await gameCode.decompileGameCode({ report, dir: jobDir(id), tools, scriptDir, maxFunctions: settings.maxFunctions ?? 0, signal, onProgress });
+      }
+      const exported = await projectExport.exportProject({ report, projectDir: jobDir(id), destinationRoot: result.filePaths[0], signal, onProgress });
+      report.exports = [...(report.exports || []), { path: exported.path, createdAt: new Date().toISOString(), files: exported.files }].slice(-20);
+      await analyzer.saveReport(jobDir(id), report);
+      return { report, exported };
+    });
+  };
+  handle('code:run', id => exportCode(id, true));
+  handle('code:export', id => exportCode(id, false));
+  handle('code:coverage', id => gameCode.codeCoverage(getReport(id)));
+  handle('code:folder', async id => {
+    const path = getReport(id).exports?.at(-1)?.path;
+    if (!path) throw new Error('Exporte os resultados para uma pasta primeiro.');
+    const error = await shell.openPath(path); if (error) throw new Error(error);
+  });
   handle('tools:choose', async key => {
     if (active) throw new Error('Aguarde a operação atual antes de alterar ferramentas.');
     if (!['ghidraDir', 'javaHome'].includes(key)) throw new Error('Ferramenta inválida.');
@@ -124,7 +152,7 @@ async function initialize() {
     if (!result.canceled) { settings[key] = result.filePaths[0]; await persistSettings(); } return state();
   });
   handle('tools:limit', async number => {
-    if (active || !Number.isInteger(number) || number < 1 || number > 10000) throw new Error('Use um limite entre 1 e 10.000, sem operação em andamento.');
+    if (active || !Number.isInteger(number) || number < 0 || number > 10000) throw new Error('Use 0 para todas as funções descobertas ou um limite entre 1 e 10.000, sem operação em andamento.');
     settings.maxFunctions = number; await persistSettings(); return state();
   });
   handle('tools:install', () => task('Instalação de ferramentas', async (signal, onProgress) => {
@@ -150,10 +178,10 @@ app.whenReady().then(async () => {
     const processTool = await import(pathToFileURL(join(ROOT, 'src/process.js')).href);
     const sevenZip = await processTool.runProcess(archive.archiveTool(), ['i'], { timeout: 10000 });
     if (!sevenZip.stdout.includes('Udf') || !sevenZip.stdout.includes('Iso')) throw new Error('A distribuição não contém um leitor ISO/UDF utilizável.');
-    const result = await win.webContents.executeJavaScript('(async () => { const end=Date.now()+10000; while(document.querySelector("#tool-status")?.textContent === "Verificando ferramentas") { if(Date.now()>end) throw new Error("Renderer initialization timed out"); await new Promise(r=>setTimeout(r,50)); } return {title:document.title,api:typeof window.port?.state,buttons:document.querySelectorAll("button").length,nodeDisabled:typeof require === "undefined",status:document.querySelector("#tool-status")?.textContent}; })()');
+    const result = await win.webContents.executeJavaScript('(async () => { const end=Date.now()+10000; while(document.querySelector("#tool-status")?.textContent === "Verificando ferramentas") { if(Date.now()>end) throw new Error("Renderer initialization timed out"); await new Promise(r=>setTimeout(r,50)); } return {title:document.title,api:typeof window.port?.state,buttons:document.querySelectorAll("button").length,codeExportAvailable:typeof window.port?.runCode === "function" && typeof window.port?.exportCode === "function" && Boolean(document.querySelector("#run-code")) && Boolean(document.querySelector("#export-code")),nodeDisabled:typeof require === "undefined",status:document.querySelector("#tool-status")?.textContent}; })()');
     console.log('PORT_RE_DESKTOP_SMOKE', JSON.stringify(result));
     await fs.writeFile(join(data, 'smoke-result.json'), JSON.stringify({ ...result, archiveFormats: true }, null, 2));
-    if (!result.nodeDisabled || result.api !== 'function' || result.buttons < 5) app.exit(1);
+    if (!result.nodeDisabled || result.api !== 'function' || result.buttons < 5 || !result.codeExportAvailable) app.exit(1);
     else if (!process.env.PORT_RE_SMOKE_KEEP_OPEN) app.exit(0);
   }
 }).catch(error => { console.error(error); app.exit(1); });

@@ -27,10 +27,10 @@ export async function checkTools(settings = {}) {
   return { ghidraDir, javaHome, java, javaInfo, javaAvailable, ghidraAvailable, ghidraVersion, ready: javaAvailable && ghidraAvailable };
 }
 
-export async function decompileArtifact({ artifact, tools, outputDir, scriptDir, maxFunctions = 1000, signal, onLog = () => {} }) {
+export async function decompileArtifact({ artifact, tools, outputDir, scriptDir, maxFunctions = 0, signal, onLog = () => {} }) {
   if (artifact.kind !== 'elf' || !artifact.decompilable) throw new AnalysisError('A decompilação integrada aceita ELF acessível de MIPS, PowerPC ou SPU; não aceita ISO, BIOS bruta, PKG ou SELF como se fossem código aberto.');
   if (!tools.ready) throw new AnalysisError('Configure uma distribuição Ghidra pronta e um JDK compatível em Ferramentas.');
-  if (!Number.isInteger(maxFunctions) || maxFunctions < 1 || maxFunctions > 10000) throw new AnalysisError('O limite de funções precisa estar entre 1 e 10.000.');
+  if (!Number.isInteger(maxFunctions) || maxFunctions < 0 || maxFunctions > 10000) throw new AnalysisError('Use 0 para tentar todas as funções descobertas ou um limite de 1 a 10.000.');
   if (artifact.sha256 && (await summarizeFile(artifact.sourcePath, { signal, maxStrings: 0 })).sha256 !== artifact.sha256) throw new AnalysisError('O executável mudou desde a análise. Analise a versão atual antes de decompilar.');
   const work = join(outputDir, 'project');
   const exported = join(outputDir, 'export');

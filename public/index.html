@@ -17,7 +17,7 @@
     <button class="nav-item" id="help"><svg viewBox="0 0 24 24"><path d="M4 3h13a3 3 0 0 1 3 3v15H7a3 3 0 0 1-3-3zm0 14h16M8 7h8M8 11h6"/></svg> Guia de uso</button>
     <div class="history-heading"><span class="nav-caption">PROJETOS RECENTES</span><span id="history-count">0</span></div>
     <div id="history" class="history"><p>Nenhuma análise salva.</p></div>
-    <div class="sidebar-bottom"><span class="local-indicator"></span><div><strong>Análise local</strong><small>Os arquivos ficam no seu PC</small></div><span id="app-version">0.2</span></div>
+    <div class="sidebar-bottom"><span class="local-indicator"></span><div><strong>Análise local</strong><small>Os arquivos ficam no seu PC</small></div><span id="app-version">0.3</span></div>
   </aside>
   <div class="app-shell">
     <header><div><span class="breadcrumb">Laboratório</span><span class="slash">/</span><strong id="breadcrumb-current">Nova análise</strong></div><div class="header-right"><span class="platform-tag">PS2</span><span class="platform-tag">PS3</span><span class="header-divider"></span><span id="tool-status">Verificando ferramentas</span></div></header>
@@ -47,6 +47,14 @@
       <section id="results" class="results" hidden>
         <div class="results-heading"><div><span class="eyebrow">PROJETO DE ANÁLISE</span><h2 id="report-title"></h2><p id="report-subtitle"></p></div><div class="action-row"><button id="open-folder" class="secondary">Abrir pasta</button><button id="export" class="secondary">Exportar relatório</button></div></div>
         <div id="stats" class="stats"></div>
+        <section class="code-export" aria-labelledby="code-export-title">
+          <div><span class="eyebrow">CÓDIGO E MATERIAL PARA PORT</span><h3 id="code-export-title">Busque o código acessível. Escolha onde guardar.</h3><p>Verifica assinaturas nos arquivos da ISO e tenta decompilar cada ELF compatível. Salva pseudocódigo, assembly, binários, projetos Ghidra e pendências em uma subpasta nova no local escolhido.</p></div>
+          <div class="action-row"><button id="run-code" class="primary">Buscar código e salvar…</button><button id="export-code" class="secondary">Salvar resultados atuais…</button></div>
+          <p id="code-limit-note"></p>
+          <p id="coverage-status" role="status"></p>
+          <p class="panel-note">Não garante descobrir todo o código original. Contêineres internos, scripts e código embutido exigem análise própria. O pacote orienta o desenvolvimento do port; não gera um jogo pronto para Windows.</p>
+          <div class="export-location" id="export-location" hidden><span id="export-path"></span><button id="open-export" class="secondary">Abrir resultados salvos</button></div>
+        </section>
         <nav class="tabs" aria-label="Resultados"><button data-tab="overview" class="active">Visão geral</button><button data-tab="inventory">Arquivos do disco</button><button data-tab="strings">Strings</button><button data-tab="pseudocode">Pseudocódigo</button></nav>
         <div class="artifact-bar" id="artifact-bar"><label for="artifact">EXECUTÁVEL</label><select id="artifact"></select><button id="decompile" class="primary">Decompilar com Ghidra</button></div>
         <div id="tab-overview" class="tab-panel"></div>
@@ -56,14 +64,14 @@
       </section>
       <section id="initial-empty" class="initial-empty"><svg viewBox="0 0 32 32"><path d="M8 3h13l6 6v20H5V3zm12 0v8h7M10 16h12m-12 5h8"/></svg><div><strong>Seu próximo projeto começa com um arquivo.</strong><p>Escolha uma ISO, um executável ou um dump de firmware. Os resultados ficam salvos no computador.</p></div></section>
     </main>
-    <footer><span>PORT RE <b>0.2</b></span><span>Análise estática · 7-Zip + Ghidra · Nenhum jogo incluído</span></footer>
+    <footer><span>PORT RE <b>0.3</b></span><span>Análise estática · 7-Zip + Ghidra · Nenhum jogo incluído</span></footer>
   </div>
   <dialog id="tools-dialog">
     <div class="dialog-heading"><div><span class="eyebrow">CONFIGURAÇÃO LOCAL</span><h2>Ferramentas de análise</h2></div><button id="tools-close" class="icon-button" aria-label="Fechar">×</button></div>
     <p class="dialog-intro">A leitura de ISO e os relatórios já fazem parte do aplicativo. Para gerar pseudocódigo, configure o Ghidra e um JDK compatível.</p>
     <div class="auto-install"><strong>Preparar decompilador no Windows</strong><p>Baixa Ghidra 12.1.4 e Temurin JDK 21 para a pasta de dados do app. Reserve pelo menos 2 GiB e mantenha a conexão. Os downloads são verificados por SHA-256 antes da extração.</p><button id="install-tools" class="primary">Baixar e configurar Ghidra + Java</button></div>
     <div class="manual-tools"><div><strong>Ghidra</strong><span id="ghidra-status"></span><small id="ghidra-path"></small><button id="choose-ghidra" class="secondary">Selecionar pasta existente</button></div><div><strong>Java JDK</strong><span id="java-status"></span><small id="java-path"></small><button id="choose-java" class="secondary">Selecionar pasta existente</button></div></div>
-    <div class="limit-setting"><label for="function-limit">Limite de funções por exportação <small>De 1 a 10.000. O número de funções descobertas não comprova que todo o código foi identificado.</small></label><input id="function-limit" type="number" min="1" max="10000" value="1000"><button id="save-limit" class="secondary">Salvar</button></div>
+    <div class="limit-setting"><label for="function-limit">Funções por executável <small>0 = tentar todas as funções descobertas (padrão). Ou defina de 1 a 10.000. Tempo e tamanho podem limitar a exportação; as pendências ficam registradas.</small></label><input id="function-limit" type="number" min="0" max="10000" value="0"><button id="save-limit" class="secondary">Salvar</button></div>
     <div id="tools-message" class="message" role="status" hidden></div>
     <p class="dialog-footnote">MMI/VU e SPU podem exigir módulos adicionais e análise manual. SELF e regiões criptografadas de firmware não são descriptografados por este aplicativo.</p>
   </dialog>

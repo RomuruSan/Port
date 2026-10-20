@@ -9,7 +9,7 @@ Esta versão substitui o antigo preparador de Haunting Ground/OpenHuey. Não usa
 ## 1. Baixar e instalar no Windows
 
 1. Abra a página de [Releases](https://github.com/RomuruSan/Port/releases).
-2. Em **Assets** da versão 0.2.0, baixe **`Port-RE-0.2.0-Windows-x64-Setup.exe`**. Não selecione os arquivos “Source code”.
+2. Em **Assets** da versão 0.3.0, baixe **[Port-RE-0.3.0-Windows-x64-Setup.exe](https://github.com/RomuruSan/Port/releases/download/v0.3.0/Port-RE-0.3.0-Windows-x64-Setup.exe)**. Não selecione os arquivos “Source code”.
 3. Execute o instalador, escolha a pasta e conclua a instalação.
 4. Abra **Port RE** pelo atalho no menu Iniciar ou na área de trabalho.
 
@@ -64,7 +64,24 @@ Se já tem as ferramentas, use **Selecionar pasta existente**. Para Ghidra, esco
 
 A instalação automática é para Windows x64. No desenvolvimento Linux, configure as pastas manualmente.
 
-## 5. Decompilar o executável
+## 5. Buscar o código do jogo e escolher onde salvar
+
+1. Faça a análise inicial da ISO e configure Ghidra + Java conforme as etapas acima.
+2. Na área **Código e material para port**, clique em **Buscar código e salvar…**.
+3. No diálogo do Windows, escolha onde guardar os resultados, por exemplo `D:\Projetos\HauntingGround`. O aplicativo criará uma **subpasta nova** dentro dessa pasta, sem substituir exportações anteriores.
+4. Aguarde a verificação dos arquivos e a decompilação em sequência. O app verifica assinaturas ELF/SELF/PKG no início dos arquivos, inclusive `.DAT` e arquivos sem extensão. Candidatos por nome também são analisados.
+5. Confira a cobertura na interface: arquivos verificados, formatos sem suporte, funções decompiladas, falhas, avisos e limites. Um executável que falha não impede os seguintes.
+6. Ao terminar, clique em **Abrir resultados salvos**. Comece por **`COBERTURA.md`**, **`LEIA-ME-PORT-WINDOWS.md`** e **`manifest.json`**.
+
+Para apenas copiar os resultados que já existem, clique em **Salvar resultados atuais…** e escolha outra pasta. Isso não refaz a análise nem exige Ghidra. **Exportar relatório** continua disponível para salvar somente Markdown/JSON.
+
+O padrão nas novas instalações é **0 = tentar todas as funções descobertas por executável**, sujeito aos limites de tempo e tamanho. Configurações antigas são preservadas: em **Ferramentas**, selecione 0 para ampliar a tentativa. “Todas as funções descobertas” não significa todo o código original do jogo.
+
+A varredura lê até **8 GiB de arquivos novos por execução**, no máximo **512 MiB por arquivo**, e mantém até **1.000 arquivos de código**. Arquivos criptografados, grandes demais ou adiados ficam listados como pendentes. Execute novamente para continuar os adiados pelo orçamento; análises concluídas são reutilizadas. Contêineres internos, scripts proprietários e código embutido em outros offsets não são decodificados automaticamente. `no-signature` significa apenas ausência dessas assinaturas no início, não ausência de código.
+
+Use **Cancelar** para interromper. Resultados anteriores ficam no projeto interno; exportações interrompidas são removidas da pasta escolhida. Abra novamente o projeto e use **Salvar resultados atuais…** para guardar o que já foi obtido. Uma nova busca retoma arquivos pendentes e tenta novamente executáveis que falharam ou atingiram limites.
+
+### Decompilar somente um executável
 
 1. Abra um projeto analisado.
 2. Em **EXECUTÁVEL**, escolha um ELF analisável.
@@ -86,11 +103,42 @@ O perfil genérico MIPS usa registradores de 64 bits, endereços de 32 bits e AB
 | **Falhas** | O Ghidra não produziu pseudocódigo para essas funções |
 | **Limite atingido** | A exportação não cobriu todas as funções descobertas ou atingiu outro limite |
 
-Em **Ferramentas**, ajuste de **1 a 10.000 funções por exportação**. O padrão é 1.000. A lista visual mostra até 1.000 funções por filtro; os arquivos contêm toda a exportação dentro dos limites configurados.
+Em **Ferramentas**, use **0 para todas as funções descobertas** ou limite de **1 a 10.000** por executável. A lista visual mostra até 1.000 funções por filtro; `functions-index.jsonl` enumera todas as funções descobertas, incluindo as não exportadas. O índice não inclui funções que o Ghidra não identificou.
 
-O exportador limita cada função a 20 segundos, a autoanálise a 5 minutos e a operação a 30 minutos. Assembly é limitado a 50.000 instruções por função. Esses limites podem deixar resultados parciais. Uma operação sem falhas não comprova que todo o código foi recuperado.
+O exportador limita cada função a 20 segundos, a autoanálise a 5 minutos e cada execução Ghidra a 30 minutos. Limita pseudocódigo por função a 1 Mi de caracteres, o total de pseudocódigo a 48 Mi e o assembly a 96 Mi. O limite de JSON pode encerrar a exportação antes disso. O assembly inclui instruções definidas fora das funções reconhecidas; bytes não interpretados continuam nos binários copiados. Limites e falhas ficam no resumo. Uma operação sem falhas não comprova que todo o código foi recuperado.
 
 ## 6. Exportar e localizar os resultados
+
+O pacote salvo na pasta escolhida tem esta estrutura:
+
+```text
+<jogo>-port-<identificador>/
+  LEIA-ME-PORT-WINDOWS.md       # próximos passos para desenvolver o port
+  COBERTURA.md / coverage.json # pendências, falhas, limites e contagens
+  manifest.json               # lista de arquivos exportados e SHA-256
+  report.json / RELATORIO.md   # metadados, strings e resultados disponíveis
+  inventory.json              # inventário completo da ISO
+  evidence/                   # SYSTEM.CNF / PARAM.SFO quando disponíveis
+  executables/<numero>-<nome>/
+    binary/                   # cópia do executável identificado
+    metadata.json             # formato, hash, segmentos e resultados
+    strings.json / symbols.json
+    ghidra/                   # quando a decompilação terminou
+      project/                # .gpr e .rep para continuar no Ghidra
+      export/
+        pseudocode.c
+        disassembly.txt
+        functions.json
+        functions-index.jsonl
+        summary.json
+    ghidra-partial/            # se existirem resultados de tentativa interrompida
+```
+
+Os caminhos dos executáveis em `report.json` são relativos à cópia exportada; os caminhos originais ficam como referência. O pacote contém os arquivos de código identificados e resultados disponíveis, não todos os recursos do disco. Reserve espaço para binários e projetos Ghidra, além das ferramentas.
+
+**Para criar um port nativo para Windows 10/11:** revise funções e tipos no Ghidra, reconstrua módulos, substitua APIs de gráficos/áudio/controles/armazenamento do console e implemente carregadores dos recursos. Depois será necessário criar e testar um projeto de build para PC. `pseudocode.c` é material de referência e pode não compilar; não existe conversão automática de ISO para um jogo nativo pronto neste aplicativo.
+
+O projeto de trabalho interno continua disponível:
 
 - **Exportar relatório:** salva Markdown ou JSON pelo diálogo do Windows.
 - **Abrir pasta:** abre a pasta do projeto no Explorador.
@@ -106,6 +154,7 @@ projects/<identificador>/
       pseudocode.c             # aproximação; pode não compilar
       disassembly.txt          # assembly das funções exportadas
       functions.json           # resultados individuais
+      functions-index.jsonl    # todas as funções descobertas, inclusive pendentes
       summary.json             # contagens e limitações
 ```
 
@@ -151,7 +200,7 @@ Para gerar o instalador:
 npm run dist:win
 ```
 
-O arquivo fica em `dist/Port-RE-0.2.0-Windows-x64-Setup.exe`. O workflow Windows executa os testes e uma verificação de inicialização do app empacotado antes de publicar artefatos. O build é sem assinatura de editor.
+O arquivo fica em `dist/Port-RE-0.3.0-Windows-x64-Setup.exe`. O workflow Windows executa os testes, uma busca/decompilação/exportação real de programas sintéticos e uma verificação de inicialização do app empacotado antes de publicar artefatos. O build é sem assinatura de editor.
 
 Para validar a integração real com Ghidra em pequenos programas sintéticos:
 

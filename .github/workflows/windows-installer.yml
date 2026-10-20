@@ -58,7 +58,7 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "Desktop exited with $($process.ExitCode)" }
           $proof = Join-Path $env:PORT_RE_DATA_DIR 'smoke-result.json'
           $result = Get-Content $proof -Raw | ConvertFrom-Json
-          if (-not $result.nodeDisabled -or -not $result.archiveFormats -or $result.api -ne 'function') { throw 'Desktop verification failed' }
+          if (-not $result.nodeDisabled -or -not $result.archiveFormats -or -not $result.codeExportAvailable -or $result.api -ne 'function') { throw 'Desktop verification failed' }
           Copy-Item $proof desktop-smoke-result.json
       - name: Installer checksum
         shell: pwsh
@@ -87,7 +87,7 @@ jobs:
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $tag = "v$version"
           $body = @'
-          Port RE: instalador para Windows 10/11 x64. Inclui interface desktop e leitura de ISO; Ghidra/JDK podem ser configurados pela interface. O instalador não tem assinatura de editor. Consulte SHA256SUMS.txt e o README.
+          Port RE: instalador para Windows 10/11 x64. Inclui varredura por assinatura, decompilação em lote e exportação de código para uma pasta escolhida; Ghidra/JDK podem ser configurados pela interface. O instalador não tem assinatura de editor. Consulte SHA256SUMS.txt e o README.
 
           A decompilação gera pseudocódigo aproximado, não todo o código-fonte original. BIOS contém firmware, não código-fonte dos jogos. Compatibilidade com jogos e dumps reais exige validação específica.
           '@

@@ -20,8 +20,9 @@ export function makeSfo() {
   return result;
 }
 
-export function makeDisc({ ps3 = false, self = false } = {}) {
+export function makeDisc({ ps3 = false, self = false, extraFiles = {} } = {}) {
   const files = ps3 ? { 'PS3_GAME/PARAM.SFO': makeSfo(), 'PS3_GAME/USRDIR/EBOOT.BIN': self ? Buffer.from('SCE\0' + '0'.repeat(60)) : makeElf({ ppc: true }) } : { 'SYSTEM.CNF': Buffer.from('BOOT2 = cdrom0:\\SLUS_000.00;1\r\nVER = 1.00\r\n'), 'SLUS_000.00': makeElf() };
+  Object.assign(files, extraFiles);
   const root = { name: '', parent: null, children: [], sector: 20, directory: true };
   root.parent = root;
   const directories = [root], content = [];

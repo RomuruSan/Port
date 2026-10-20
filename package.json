@@ -1,6 +1,6 @@
 {
   "name": "port-re",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Aplicativo desktop para análise e engenharia reversa de arquivos de PS2 e PS3.",

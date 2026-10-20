@@ -38,7 +38,7 @@ export async function analyzeArtifact({ sourcePath, name, dir, id = randomUUID()
 export async function analyzeInput({ sourcePath, kind, dir, id, signal, onProgress = () => {} }) {
   await mkdir(dir, { recursive: true });
   const original = await stat(sourcePath), size = original.size;
-  const report = { schema: 1, app: 'Port RE', version: '0.2.0', id, createdAt: new Date().toISOString(), kind, title: basename(sourcePath), source: { name: basename(sourcePath), path: sourcePath, sizeBytes: size, modifiedAtMs: original.mtimeMs }, artifacts: [], files: [], limitations: LIMITATIONS, originalSourceRecovered: false, status: 'analyzed' };
+  const report = { schema: 1, app: 'Port RE', version: '0.3.0', id, createdAt: new Date().toISOString(), kind, title: basename(sourcePath), source: { name: basename(sourcePath), path: sourcePath, sizeBytes: size, modifiedAtMs: original.mtimeMs }, artifacts: [], files: [], limitations: LIMITATIONS, originalSourceRecovered: false, status: 'analyzed' };
   if (kind === 'iso') {
     onProgress({ stage: 'inventory', message: 'Lendo o sistema de arquivos ISO/UDF…' });
     const inventory = await listDisc(sourcePath, { signal });
@@ -89,7 +89,7 @@ export async function appendDiscArtifact({ report, entry, dir, signal, onProgres
   if (current.size !== report.source.sizeBytes || current.mtimeMs !== report.source.modifiedAtMs) throw new AnalysisError('A imagem mudou desde o inventário. Analise a ISO novamente antes de extrair.');
   const previous = report.artifacts.find(a => a.discEntryId === entry.id);
   if (previous) return previous;
-  if (report.artifacts.length >= 100) throw new AnalysisError('O projeto aceita até 100 executáveis analisados.');
+  if (report.artifacts.length >= 1000) throw new AnalysisError('O projeto atingiu o limite de 1.000 arquivos de código analisados.');
   const id = randomUUID();
   const path = join(dir, 'artifacts', `${id}-${safeName(entry.path)}`);
   onProgress({ stage: 'extracting', message: `Extraindo somente ${entry.path}…` });

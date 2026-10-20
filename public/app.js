@@ -11,7 +11,9 @@ function message(text, error = false, selector = '#message') {
 }
 function setBusy(value) {
   busy = value;
-  document.querySelectorAll('.input-card, #analyze, #new-analysis, #choose-ghidra, #choose-java, #save-limit, #history button, #export').forEach(e => { e.disabled = busy; });
+  document.querySelectorAll('.input-card, #analyze, #new-analysis, #choose-ghidra, #choose-java, #save-limit, #history button, #export, #export-code').forEach(e => { e.disabled = busy; });
+  $('#run-code').disabled = busy || !report || report.kind === 'firmware' || !appState?.tools.ready;
+  $('#run-code').title = appState?.tools.ready ? '' : 'Configure Ghidra e Java em Ferramentas.';
   $('#decompile').disabled = busy || !selectedArtifact()?.decompilable || !appState?.tools.ready;
   $('#install-tools').disabled = busy || appState?.platform !== 'win32';
   $('#artifact').disabled = busy;
@@ -41,6 +43,7 @@ async function refresh() {
   $('#java-status').textContent = appState.tools.javaAvailable ? 'JDK compatível encontrado' : 'JDK compatível não encontrado';
   $('#java-path').textContent = appState.tools.javaInfo;
   $('#function-limit').value = appState.settings.maxFunctions;
+  $('#code-limit-note').textContent = appState.settings.maxFunctions === 0 ? 'Tentativa configurada: todas as funções descobertas por executável, sujeita a limites de tempo e tamanho.' : `Limite atual: ${appState.settings.maxFunctions} funções por executável. Em Ferramentas, use 0 para tentar todas as funções descobertas.`;
   setBusy(busy);
 }
 async function operation(label, callback) {
@@ -57,6 +60,7 @@ async function operation(label, callback) {
     $('#task-title').textContent = failed ? 'Operação não concluída' : 'Operação concluída';
     $('#task-message').textContent = failed ? 'Confira o aviso e o registro. Nenhum arquivo original foi alterado.' : 'Os resultados disponíveis foram salvos neste computador.';
     $('#task-progress').hidden = true; $('#task .spinner').hidden = true; $('#cancel').hidden = true;
+    if (failed && report) { try { setReport(await api.report(report.id)); } catch { /* Keep current view if the project was not created. */ } }
     setBusy(false); await refresh().catch(error => message(error.message, true));
   }
 }
@@ -73,7 +77,17 @@ function setReport(value) {
   const data = report.firmware;
   const metrics = data ? [[data.entries.length, 'Módulos ROMDIR'], [data.strings.length, 'Strings na amostra'], [size(data.sizeBytes), 'Tamanho do dump'], ['Local', 'Arquivo original preservado']] : [[report.files.length, 'Arquivos no disco'], [report.artifacts.length, 'Executáveis analisados'], [report.artifacts.reduce((n, a) => n + (a.symbols?.length || 0), 0), 'Símbolos nomeados listados'], [report.artifacts.reduce((n, a) => n + (a.decompilation?.decompiled || 0), 0), 'Funções decompiladas']];
   $('#stats').replaceChildren(...metrics.map(([value, label]) => { const box = node('div', '', 'stat'); box.append(node('strong', String(value)), node('small', label)); return box; }));
-  renderOverview(); renderFiles(); renderStrings(); loadFunctions(); showTab(activeTab); setBusy(busy);
+  renderOverview(); renderFiles(); renderStrings(); loadFunctions(); renderCoverage(); showTab(activeTab); setBusy(busy);
+}
+async function renderCoverage() {
+  const id = report.id;
+  const saved = report.exports?.at(-1);
+  $('#export-location').hidden = !saved;
+  $('#export-path').textContent = saved ? 'Última cópia salva em: ' + saved.path : '';
+  try {
+    const c = await api.coverage(id); if (id !== report?.id) return;
+    $('#coverage-status').textContent = `Cobertura disponível: ${c.checkedFiles}/${c.discFiles} arquivos verificados · ${c.artifacts} arquivos de código · ${c.decompiledFunctions}/${c.discoveredFunctions} funções decompiladas. Pendências: ${c.pendingFiles} arquivos, ${c.unsupportedArtifacts} formatos sem suporte, ${c.failedArtifacts} executáveis com falha, ${c.failedFunctions} funções com falha e ${c.notExportedFunctions} funções sem tentativa. ${c.limitedArtifacts} exportações atingiram limites. ${c.warningFunctions} funções contêm avisos. Busca: ${c.runStatus === 'finished' ? 'finalizado; confira as pendências' : c.runStatus === 'cancelled' ? 'cancelado; resultados parciais' : c.runStatus === 'failed' ? 'falhou; resultados parciais' : c.runStatus === 'running' ? 'em andamento' : 'busca em lote ainda não realizada'}.`;
+  } catch (error) { message(error.message, true); }
 }
 function details(entries) {
   const dl = node('dl', '', 'details-grid');
@@ -183,6 +197,15 @@ if (!api) {
     if ($('#tools-dialog').open) $('#tools-dialog').close();
     operation('Decompilando executável', async () => { setReport(await api.decompile(report.id, artifactId)); showTab('pseudocode'); });
   });
+  for (const [selector, method, label] of [['#run-code', 'runCode', 'Buscando código e salvando resultados'], ['#export-code', 'exportCode', 'Salvando os resultados disponíveis']]) {
+    $(selector).addEventListener('click', () => report && operation(label, async () => {
+      const result = await api[method](report.id);
+      if (!result) { message('Seleção de pasta cancelada.'); return; }
+      setReport(result.report);
+      message('Resultados salvos em ' + result.exported.path + '. Consulte COBERTURA.md e LEIA-ME-PORT-WINDOWS.md antes de iniciar o port.');
+    }));
+  }
+  $('#open-export').addEventListener('click', async () => { try { if (report) await api.exportFolder(report.id); } catch (error) { message(error.message, true); } });
   $('#artifact').addEventListener('change', event => { artifactId = event.target.value; renderOverview(); renderStrings(); loadFunctions(); setBusy(busy); });
   document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => showTab(button.dataset.tab)));
   $('#file-filter').addEventListener('input', renderFiles); $('#candidates-only').addEventListener('change', renderFiles);
