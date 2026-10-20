@@ -1,0 +1,96 @@
+name: Windows installer
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test
+  windows:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: core
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: node node_modules/electron/install.js
+      - run: npm test
+      - name: Verify real Windows decompilation
+        shell: pwsh
+        run: |
+          $env:PORT_RE_TOOL_CACHE = Join-Path $env:RUNNER_TEMP 'port-re-tools'
+          node tools/setup-toolchain.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Toolchain installation failed' }
+          $paths = Get-Content (Join-Path $env:PORT_RE_TOOL_CACHE 'paths.json') -Raw | ConvertFrom-Json
+          $env:PORT_RE_GHIDRA_DIR = $paths.ghidraDir
+          $env:JAVA_HOME = $paths.javaHome
+          npm run verify:ghidra
+          if ($LASTEXITCODE -ne 0) { throw 'Windows decompilation verification failed' }
+      - run: npm run dist:win
+      - name: Verify packaged desktop
+        shell: pwsh
+        run: |
+          $env:PORT_RE_SMOKE_TEST = '1'
+          $env:PORT_RE_DATA_DIR = Join-Path $env:RUNNER_TEMP 'port-re-smoke'
+          $process = Start-Process -FilePath 'dist/win-unpacked/Port RE.exe' -PassThru -RedirectStandardOutput 'desktop-smoke.log' -RedirectStandardError 'desktop-smoke-errors.log'
+          if (-not $process.WaitForExit(60000)) {
+            Stop-Process -Id $process.Id -Force
+            throw 'Desktop verification timed out'
+          }
+          Get-Content desktop-smoke.log
+          Get-Content desktop-smoke-errors.log
+          $process.Refresh()
+          if ($process.ExitCode -ne 0) { throw "Desktop exited with $($process.ExitCode)" }
+          $proof = Join-Path $env:PORT_RE_DATA_DIR 'smoke-result.json'
+          $result = Get-Content $proof -Raw | ConvertFrom-Json
+          if (-not $result.nodeDisabled -or -not $result.archiveFormats -or $result.api -ne 'function') { throw 'Desktop verification failed' }
+          Copy-Item $proof desktop-smoke-result.json
+      - name: Installer checksum
+        shell: pwsh
+        run: |
+          $lines = Get-ChildItem dist/*Setup.exe | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)"
+          }
+          $lines | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Port-RE-Windows-x64
+          path: |
+            dist/*Setup.exe
+            dist/SHA256SUMS.txt
+            desktop-smoke*.log
+            desktop-smoke-result.json
+          if-no-files-found: error
+      - name: Publish tagged installer
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $tag = $env:RELEASE_TAG
+          $body = @'
+          Port RE: instalador para Windows 10/11 x64. Inclui interface desktop e leitura de ISO; Ghidra/JDK podem ser configurados pela interface. O instalador não tem assinatura de editor. Consulte SHA256SUMS.txt e o README.
+
+          A decompilação gera pseudocódigo aproximado, não todo o código-fonte original. BIOS contém firmware, não código-fonte dos jogos. Compatibilidade com jogos e dumps reais exige validação específica.
+          '@
+          $body | Set-Content -Encoding utf8 release-notes.md
+          $installer = Get-ChildItem dist/*Setup.exe | Select-Object -First 1
+          gh release create $tag $installer.FullName dist/SHA256SUMS.txt --title "Port RE $tag — Windows x64" --notes-file release-notes.md

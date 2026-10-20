@@ -3,80 +3,69 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101310">
-  <title>Port — Haunting Ground para PC</title>
-  <link rel="stylesheet" href="/styles.css">
-  <script src="/app.js" type="module"></script>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Port RE — Engenharia reversa de PS2 e PS3</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" type="module"></script>
 </head>
 <body>
-  <aside class="rail">
-    <a class="brand" href="/" aria-label="Port início">p<span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19 19 5M5 5h14v14"/></svg></span></a>
-    <span class="rail-label">DISC TO DESKTOP</span>
-    <span class="rail-bottom">01 / PS2</span>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-icon"><svg viewBox="0 0 24 24"><path d="m8 5-6 7 6 7m8-14 6 7-6 7m-2-17-4 20"/></svg></span><strong>port<span>RE</span></strong><small>REVERSE ENGINEERING</small></div>
+    <span class="nav-caption">ESPAÇO DE TRABALHO</span>
+    <button class="nav-item active" id="new-analysis"><svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zm10 0h6v6h-6zM4 14h6v6H4zm10 0h6v6h-6z"/></svg> Nova análise</button>
+    <button class="nav-item" id="tools-open"><svg viewBox="0 0 24 24"><path d="m15 4 5 5-9 9-6 1 1-6zM13 6l5 5M4 4l4 4"/></svg> Ferramentas <i id="tools-dot"></i></button>
+    <button class="nav-item" id="help"><svg viewBox="0 0 24 24"><path d="M4 3h13a3 3 0 0 1 3 3v15H7a3 3 0 0 1-3-3zm0 14h16M8 7h8M8 11h6"/></svg> Guia de uso</button>
+    <div class="history-heading"><span class="nav-caption">PROJETOS RECENTES</span><span id="history-count">0</span></div>
+    <div id="history" class="history"><p>Nenhuma análise salva.</p></div>
+    <div class="sidebar-bottom"><span class="local-indicator"></span><div><strong>Análise local</strong><small>Os arquivos ficam no seu PC</small></div><span id="app-version">0.2</span></div>
   </aside>
-  <div class="shell">
-    <header>
-      <a class="wordmark" href="/">port<span> / native projects</span></a>
-      <span id="connection" class="connection"><i></i> Conectando</span>
-    </header>
+  <div class="app-shell">
+    <header><div><span class="breadcrumb">Laboratório</span><span class="slash">/</span><strong id="breadcrumb-current">Nova análise</strong></div><div class="header-right"><span class="platform-tag">PS2</span><span class="platform-tag">PS3</span><span class="header-divider"></span><span id="tool-status">Verificando ferramentas</span></div></header>
     <main>
-      <section class="hero" aria-labelledby="hero-title">
-        <div class="hero-copy">
-          <p class="eyebrow"><span class="small-line"></span> PLAYSTATION 2 → PC</p>
-          <h1 id="hero-title">Uma nova casa<br>para um <em>clássico.</em></h1>
-          <p class="intro">Prepare Haunting Ground para rodar nativamente no seu PC, com os dados da sua própria ISO e o motor OpenHuey.</p>
-          <div class="hero-tags"><span>EXECUÇÃO NATIVA</span><span>SEM EMULADOR</span><span>PERFIL ESPECÍFICO</span></div>
-        </div>
-        <div class="disc-art" aria-hidden="true">
-          <div class="disc"><div class="disc-ring"></div><span class="disc-center"></span><div class="disc-type">HAUNTING<br>GROUND<span>SLUS_210.75 / USA</span></div><div class="disc-mark">PS2</div></div>
-          <span class="art-caption">THE ORIGINAL DISC. A NATIVE ENGINE.</span>
-        </div>
-      </section>
+      <section class="intro" id="intro">
+        <div><p class="eyebrow"><span></span> DO ARQUIVO À ANÁLISE</p><h1>Entenda o binário.<br><em>Reconstrua a lógica.</em></h1><p class="intro-copy">Explore discos de PS2 e PS3, inspecione firmware e transforme executáveis acessíveis em assembly e pseudocódigo.</p></div>
+        <div class="code-art" aria-hidden="true"><div class="code-art-header"><i></i><i></i><i></i><span>binary → analysis</span></div><pre><span class="dim">// reconstrução, não fonte original</span>
+<span class="mint">int</span> function_00100000(<span class="mint">int</span> a) {
+    <span class="violet">return</span> a + 1;
+}
 
-      <div class="section-heading"><h2>Seu projeto</h2><span>HAUNTING GROUND <b>2005</b></span></div>
-      <section class="workspace">
-        <div class="import-panel">
-          <div class="panel-heading"><span class="step">01</span><h3>Comece pelo disco</h3><span class="file-kind">.ISO</span></div>
-          <label id="dropzone" class="dropzone" for="iso-file">
-            <input id="iso-file" type="file" accept=".iso" aria-describedby="upload-hint">
-            <span class="upload-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4m-5 6 5-6 5 6M5 16v4h14v-4"/></svg></span>
-            <strong>Solte sua ISO aqui</strong>
-            <span>ou <u>escolha um arquivo</u> no computador</span>
-            <small id="upload-hint">Edição americana · SLUS_210.75 · até 9 GiB</small>
-          </label>
-          <div id="upload-progress" class="upload-progress" hidden><div class="progress-track"><div id="progress-fill"></div></div><p id="progress-text" role="status"></p></div>
-          <div id="notice" class="notice" role="status" hidden></div>
-          <div id="stored-isos" hidden><label class="field-label" for="stored-iso">ISOS JÁ ANALISADAS</label><select id="stored-iso" class="name-input"></select></div>
-          <div id="disc-info" class="disc-info" hidden>
-            <div class="disc-info-heading"><span class="step">02</span><h3>Conferência da imagem</h3><span id="compatibility-badge" class="badge"></span></div>
-            <p id="disc-file" class="selected-file"></p>
-            <dl id="disc-details"></dl>
-            <p id="compatibility-reason" class="detail-note"></p>
-            <button id="remove-upload" class="text-button" type="button">Remover ISO armazenada</button>
-          </div>
-        </div>
-
-        <div class="build-panel">
-          <div class="panel-heading"><span class="step">03</span><h3>Prepare para PC</h3></div>
-          <div class="engine-card"><div class="engine-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19 19 5M5 5h14v14"/></svg></div><div><strong>OpenHuey</strong><p>Motor nativo para Haunting Ground</p></div><span id="engine-badge" class="status-dot" title="Verificando motor"></span></div>
-          <div id="engine-notice" class="engine-notice" hidden>Configure o motor nativo seguindo o README do projeto antes de preparar o jogo.</div>
-          <label class="field-label" for="project-name">NOME DO PROJETO</label>
-          <input id="project-name" class="name-input" maxlength="80" value="Haunting Ground" autocomplete="off">
-          <span class="field-label">DESTINO DESTA PREPARAÇÃO</span>
-          <div id="target" class="target">Verificando plataforma…</div>
-          <p class="build-explanation">A pasta final reúne o motor para este sistema e os dados importados do disco. A ISO original é preservada.</p>
-          <button id="build" class="primary" type="button" disabled><span>Preparar jogo para PC</span><span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 19 19 5M5 5h14v14"/></svg></span></button>
-          <p class="honest-note">Importar os dados não confirma que todas as partes do jogo funcionam. Teste a pasta resultante no seu PC.</p>
-        </div>
+<span class="dim">// nomes e tipos exigem revisão</span></pre><div class="code-art-footer"><span class="tiny-dot"></span> ANÁLISE ESTÁTICA <span>ELF / MIPS / PPC</span></div></div>
       </section>
-
-      <section class="projects-section" aria-labelledby="projects-title">
-        <div class="section-heading"><h2 id="projects-title">Preparações</h2><span id="project-count">0 PROJETOS</span></div>
-        <div id="projects" aria-live="polite"><div class="empty"><span aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4v11h14m-5-5 5 5-5 5"/></svg></span><div><strong>Seu próximo projeto começa aqui.</strong><p>Selecione uma ISO compatível para preparar a primeira pasta do jogo.</p></div></div></div>
+      <section class="workflow"><span><b>01</b> Abrir arquivo</span><i></i><span><b>02</b> Inspecionar</span><i></i><span><b>03</b> Decompilar</span><i></i><span><b>04</b> Exportar</span></section>
+      <section id="input-area">
+        <div class="section-heading"><h2>O que você quer analisar?</h2><span>LEITURA DOS ARQUIVOS ORIGINAIS</span></div>
+        <div class="input-grid">
+          <button class="input-card" data-kind="iso"><span class="card-icon"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="12"/><circle cx="16" cy="16" r="3"/><path d="M16 7a9 9 0 0 1 9 9"/></svg></span><span class="card-type">DISCO</span><strong>Imagem ISO</strong><p>Inventário ISO9660/UDF e extração de executáveis de PS2 e PS3.</p><span class="card-action">Selecionar ISO <svg viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></span></button>
+          <button class="input-card" data-kind="binary"><span class="card-icon purple"><svg viewBox="0 0 32 32"><path d="M9 3h10l7 7v19H6V3zm9 0v9h8m-14 5-3 3 3 3m8-6 3 3-3 3"/></svg></span><span class="card-type">CÓDIGO COMPILADO</span><strong>Executável</strong><p>ELF de MIPS, PowerPC ou SPU. Contêineres SELF são identificados.</p><span class="card-action">Selecionar arquivo <svg viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></span></button>
+          <button class="input-card" data-kind="firmware"><span class="card-icon amber"><svg viewBox="0 0 32 32"><rect x="8" y="8" width="16" height="16" rx="2"/><path d="M12 8V3m8 5V3m-8 26v-5m8 5v-5M8 12H3m5 8H3m26-8h-5m5 8h-5"/><path d="M12 12h8v8h-8z"/></svg></span><span class="card-type">FIRMWARE</span><strong>BIOS / flash</strong><p>ROMDIR de PS2, versão, módulos, hashes e amostras de strings.</p><span class="card-action">Selecionar dump <svg viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></span></button>
+        </div>
+        <div id="selected-input" class="selected-input" hidden><div><span class="file-label">ARQUIVO SELECIONADO</span><strong id="input-name"></strong><small id="input-path"></small></div><span id="input-size"></span><button id="analyze" class="primary">Analisar arquivo <svg viewBox="0 0 24 24"><path d="m9 5 9 7-9 7z"/></svg></button></div>
       </section>
-      <section class="scope-note"><span>i</span><p><strong>Uma base para um jogo específico.</strong> Esta versão integra Haunting Ground (EUA). Outros jogos de PS2 e jogos de PS3 precisam de seus próprios projetos nativos.</p></section>
+      <div class="scope-banner"><span class="info-icon">i</span><p><strong>O resultado é uma reconstrução.</strong> Decompiladores não recuperam integralmente o código-fonte original, nomes ou comentários removidos. A BIOS contém firmware do console, não o código dos jogos.</p></div>
+      <div id="message" class="message" role="status" hidden></div>
+      <section id="task" class="task" hidden><div><span class="spinner"></span><div><strong id="task-title"></strong><p id="task-message"></p></div><button id="cancel" class="secondary">Cancelar</button></div><progress id="task-progress"></progress><details><summary>Ver registro da operação</summary><pre id="task-log"></pre></details></section>
+      <section id="results" class="results" hidden>
+        <div class="results-heading"><div><span class="eyebrow">PROJETO DE ANÁLISE</span><h2 id="report-title"></h2><p id="report-subtitle"></p></div><div class="action-row"><button id="open-folder" class="secondary">Abrir pasta</button><button id="export" class="secondary">Exportar relatório</button></div></div>
+        <div id="stats" class="stats"></div>
+        <nav class="tabs" aria-label="Resultados"><button data-tab="overview" class="active">Visão geral</button><button data-tab="inventory">Arquivos do disco</button><button data-tab="strings">Strings</button><button data-tab="pseudocode">Pseudocódigo</button></nav>
+        <div class="artifact-bar" id="artifact-bar"><label for="artifact">EXECUTÁVEL</label><select id="artifact"></select><button id="decompile" class="primary">Decompilar com Ghidra</button></div>
+        <div id="tab-overview" class="tab-panel"></div>
+        <div id="tab-inventory" class="tab-panel" hidden><div class="filter-row"><input id="file-filter" placeholder="Buscar arquivo no disco…" aria-label="Buscar arquivo"><label><input id="candidates-only" type="checkbox" checked> Somente candidatos a executável</label></div><div id="file-list"></div></div>
+        <div id="tab-strings" class="tab-panel" hidden><div class="filter-row"><input id="string-filter" placeholder="Buscar nas strings extraídas…" aria-label="Buscar string"><span id="strings-note"></span></div><div id="string-list"></div></div>
+        <div id="tab-pseudocode" class="tab-panel" hidden><p class="panel-note">Pseudocódigo aproximado, sujeito a erros. Não é o fonte original nem um port pronto para compilar. Assembly e projeto Ghidra ficam na pasta de exportação.</p><div id="code-empty" class="empty-state"><strong>Selecione um ELF e execute o Ghidra.</strong><p>O relatório mostrará funções descobertas, decompiladas, falhas e limites de exportação.</p><button id="configure-from-code" class="secondary">Configurar ferramentas</button></div><div id="code-workspace" class="code-workspace" hidden><div class="function-list"><input id="function-filter" placeholder="Buscar função…" aria-label="Buscar função"><div id="functions"></div></div><pre id="pseudocode"></pre></div></div>
+      </section>
+      <section id="initial-empty" class="initial-empty"><svg viewBox="0 0 32 32"><path d="M8 3h13l6 6v20H5V3zm12 0v8h7M10 16h12m-12 5h8"/></svg><div><strong>Seu próximo projeto começa com um arquivo.</strong><p>Escolha uma ISO, um executável ou um dump de firmware. Os resultados ficam salvos no computador.</p></div></section>
     </main>
-    <footer><span>PORT <b>0.1</b></span><span>Motor: <a href="https://github.com/ArnautDaniel/OpenHuey" target="_blank" rel="noreferrer">OpenHuey</a> · Nenhum dado do jogo é incluído</span></footer>
+    <footer><span>PORT RE <b>0.2</b></span><span>Análise estática · 7-Zip + Ghidra · Nenhum jogo incluído</span></footer>
   </div>
+  <dialog id="tools-dialog">
+    <div class="dialog-heading"><div><span class="eyebrow">CONFIGURAÇÃO LOCAL</span><h2>Ferramentas de análise</h2></div><button id="tools-close" class="icon-button" aria-label="Fechar">×</button></div>
+    <p class="dialog-intro">A leitura de ISO e os relatórios já fazem parte do aplicativo. Para gerar pseudocódigo, configure o Ghidra e um JDK compatível.</p>
+    <div class="auto-install"><strong>Preparar decompilador no Windows</strong><p>Baixa Ghidra 12.1.4 e Temurin JDK 21 para a pasta de dados do app. Reserve pelo menos 2 GiB e mantenha a conexão. Os downloads são verificados por SHA-256 antes da extração.</p><button id="install-tools" class="primary">Baixar e configurar Ghidra + Java</button></div>
+    <div class="manual-tools"><div><strong>Ghidra</strong><span id="ghidra-status"></span><small id="ghidra-path"></small><button id="choose-ghidra" class="secondary">Selecionar pasta existente</button></div><div><strong>Java JDK</strong><span id="java-status"></span><small id="java-path"></small><button id="choose-java" class="secondary">Selecionar pasta existente</button></div></div>
+    <div class="limit-setting"><label for="function-limit">Limite de funções por exportação <small>De 1 a 10.000. O número de funções descobertas não comprova que todo o código foi identificado.</small></label><input id="function-limit" type="number" min="1" max="10000" value="1000"><button id="save-limit" class="secondary">Salvar</button></div>
+    <div id="tools-message" class="message" role="status" hidden></div>
+    <p class="dialog-footnote">MMI/VU e SPU podem exigir módulos adicionais e análise manual. SELF e regiões criptografadas de firmware não são descriptografados por este aplicativo.</p>
+  </dialog>
 </body>
 </html>

@@ -1,173 +1,206 @@
 const $ = selector => document.querySelector(selector);
-let state;
-let selectedId;
-let uploading = false;
-let starting = false;
-let statusPending = false;
+const api = window.port;
+let appState, input, report, artifactId, activeTab = 'overview', busy = false;
+let functions = [], functionKey = '', selectedFunction = '', currentLog = '';
+const size = bytes => bytes >= 1024 ** 3 ? (bytes / 1024 ** 3).toFixed(2) + ' GiB' : bytes >= 1024 ** 2 ? (bytes / 1024 ** 2).toFixed(1) + ' MiB' : bytes.toLocaleString('pt-BR') + ' B';
+const node = (tag, text = '', className = '') => { const e = document.createElement(tag); e.textContent = text; if (className) e.className = className; return e; };
+const selectedArtifact = () => report?.artifacts.find(a => a.id === artifactId);
 
-const stages = { queued: 'Na fila', copying: 'Preparando motor', importing: 'Importando dados', ready: 'Pasta preparada', failed: 'Preparação interrompida' };
-const formatSize = bytes => bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(2)} GiB` : `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
-
-function notice(message, error = false) {
-  $('#notice').textContent = message;
-  $('#notice').classList.toggle('error', error);
-  $('#notice').hidden = !message;
+function message(text, error = false, selector = '#message') {
+  const box = $(selector); box.textContent = text; box.classList.toggle('error', error); box.hidden = !text;
 }
-
-async function api(path, options) {
-  const response = await fetch(path, options);
-  const value = await response.json();
-  if (!response.ok) throw new Error(value.error || 'A operação não foi concluída.');
-  return value;
+function setBusy(value) {
+  busy = value;
+  document.querySelectorAll('.input-card, #analyze, #new-analysis, #choose-ghidra, #choose-java, #save-limit, #history button, #export').forEach(e => { e.disabled = busy; });
+  $('#decompile').disabled = busy || !selectedArtifact()?.decompilable || !appState?.tools.ready;
+  $('#install-tools').disabled = busy || appState?.platform !== 'win32';
+  $('#artifact').disabled = busy;
+  if (report) renderFiles();
 }
-
-function textElement(tag, value, className) {
-  const element = document.createElement(tag);
-  element.textContent = value;
-  if (className) element.className = className;
-  return element;
-}
-
-function render() {
-  if (!state) return;
-  const selected = state.uploads.find(item => item.id === selectedId);
-  $('#engine-badge').classList.toggle('available', state.engine.available);
-  $('#engine-badge').title = state.engine.available ? `OpenHuey ${state.engine.version} disponível` : 'Motor nativo ainda não configurado';
-  $('#engine-notice').hidden = state.engine.available;
-  const platform = state.engine.host === 'win32' ? 'Windows' : state.engine.host === 'linux' ? 'Linux' : state.engine.host;
-  $('#target').textContent = `${platform} · motor nativo deste computador`;
-  $('#build').disabled = uploading || starting || state.busy || !selected?.compatibility.supported || !state.engine.available;
-  $('#build span').textContent = starting || state.busy && !uploading ? 'Preparação em andamento…' : 'Preparar jogo para PC';
-  $('#dropzone').classList.toggle('disabled', uploading || state.busy);
-  $('#iso-file').disabled = uploading || state.busy;
-  $('#disc-info').hidden = !selected;
-  $('#remove-upload').disabled = state.busy;
-  $('#stored-isos').hidden = state.uploads.length < 2;
-  const stored = $('#stored-iso');
-  if (stored.options.length !== state.uploads.length || [...stored.options].some((item, index) => item.value !== state.uploads[index]?.id)) {
-    stored.replaceChildren(...state.uploads.map(upload => {
-      const option = textElement('option', upload.fileName);
-      option.value = upload.id;
-      return option;
-    }));
+async function refresh() {
+  appState = await api.state();
+  $('#app-version').textContent = appState.version;
+  $('#tool-status').textContent = appState.tools.ready ? 'Ghidra disponível' : 'Decompilador não configurado';
+  $('#tools-dot').classList.toggle('ready', appState.tools.ready);
+  $('#history-count').textContent = appState.reports.length;
+  const history = $('#history');
+  history.replaceChildren();
+  if (!appState.reports.length) history.append(node('p', 'Nenhuma análise salva.'));
+  for (const item of appState.reports.slice(0, 30)) {
+    const button = node('button', item.title);
+    if (item.id === report?.id) button.classList.add('selected');
+    button.append(node('small', (item.platform || 'Arquivo') + ' · ' + new Date(item.createdAt).toLocaleDateString('pt-BR')));
+    button.addEventListener('click', async () => {
+      try { setReport(await api.report(item.id)); message(''); await refresh(); }
+      catch (error) { message(error.message, true); }
+    });
+    history.append(button);
   }
-  stored.value = selectedId || '';
-  if (selected) {
-    $('#disc-file').textContent = selected.fileName;
-    $('#compatibility-badge').textContent = selected.compatibility.supported ? 'RECONHECIDA' : 'NÃO COMPATÍVEL';
-    $('#compatibility-badge').classList.toggle('unsupported', !selected.compatibility.supported);
-    $('#compatibility-reason').textContent = selected.compatibility.reason;
-    const details = $('#disc-details');
-    details.replaceChildren();
-    for (const [name, value] of [['Região', selected.region], ['Executável', selected.serial], ['Tamanho', formatSize(selected.sizeBytes)], ['CRC32 ELF', selected.executable.crc32], ['SHA-256 ISO', selected.sha256]]) {
-      details.append(textElement('dt', name), textElement('dd', value));
+  $('#ghidra-status').textContent = appState.tools.ghidraAvailable ? 'Distribuição ' + appState.tools.ghidraVersion + ' encontrada' : 'Pasta válida não configurada';
+  $('#ghidra-path').textContent = appState.tools.ghidraDir || 'Selecione a pasta que contém Ghidra e support.';
+  $('#java-status').textContent = appState.tools.javaAvailable ? 'JDK compatível encontrado' : 'JDK compatível não encontrado';
+  $('#java-path').textContent = appState.tools.javaInfo;
+  $('#function-limit').value = appState.settings.maxFunctions;
+  setBusy(busy);
+}
+async function operation(label, callback) {
+  if (busy) return;
+  message(''); message('', false, '#tools-message'); setBusy(true); currentLog = '';
+  $('#task').hidden = false; $('#task-title').textContent = label;
+  $('#task-message').textContent = 'Preparando operação…'; $('#task-log').textContent = '';
+  $('#task-progress').removeAttribute('value'); $('#task-progress').hidden = false;
+  $('#task .spinner').hidden = false; $('#cancel').hidden = false;
+  let failed = false;
+  try { await callback(); }
+  catch (error) { failed = true; message(error.message, true); if ($('#tools-dialog').open) message(error.message, true, '#tools-message'); }
+  finally {
+    $('#task-title').textContent = failed ? 'Operação não concluída' : 'Operação concluída';
+    $('#task-message').textContent = failed ? 'Confira o aviso e o registro. Nenhum arquivo original foi alterado.' : 'Os resultados disponíveis foram salvos neste computador.';
+    $('#task-progress').hidden = true; $('#task .spinner').hidden = true; $('#cancel').hidden = true;
+    setBusy(false); await refresh().catch(error => message(error.message, true));
+  }
+}
+function setReport(value) {
+  report = value;
+  if (!report.artifacts.some(a => a.id === artifactId)) artifactId = report.artifacts[0]?.id;
+  $('#results').hidden = false; $('#initial-empty').hidden = true;
+  $('#report-title').textContent = report.title;
+  $('#report-subtitle').textContent = (report.platform || 'Arquivo') + ' · ' + size(report.source.sizeBytes) + ' · ' + new Date(report.createdAt).toLocaleString('pt-BR');
+  $('#breadcrumb-current').textContent = 'Projeto de análise';
+  const select = $('#artifact'); select.replaceChildren();
+  for (const artifact of report.artifacts) { const option = node('option', artifact.name); option.value = artifact.id; select.append(option); }
+  select.value = artifactId || ''; $('#artifact-bar').hidden = !report.artifacts.length;
+  const data = report.firmware;
+  const metrics = data ? [[data.entries.length, 'Módulos ROMDIR'], [data.strings.length, 'Strings na amostra'], [size(data.sizeBytes), 'Tamanho do dump'], ['Local', 'Arquivo original preservado']] : [[report.files.length, 'Arquivos no disco'], [report.artifacts.length, 'Executáveis analisados'], [report.artifacts.reduce((n, a) => n + (a.symbols?.length || 0), 0), 'Símbolos nomeados listados'], [report.artifacts.reduce((n, a) => n + (a.decompilation?.decompiled || 0), 0), 'Funções decompiladas']];
+  $('#stats').replaceChildren(...metrics.map(([value, label]) => { const box = node('div', '', 'stat'); box.append(node('strong', String(value)), node('small', label)); return box; }));
+  renderOverview(); renderFiles(); renderStrings(); loadFunctions(); showTab(activeTab); setBusy(busy);
+}
+function details(entries) {
+  const dl = node('dl', '', 'details-grid');
+  for (const [key, value] of entries) { if (value === undefined || value === null || value === '') continue; dl.append(node('dt', key), node('dd', String(value))); }
+  return dl;
+}
+function table(headers, rows) {
+  const wrapper = node('div', '', 'table-wrap'), table = document.createElement('table');
+  const thead = document.createElement('thead'), tr = document.createElement('tr'); headers.forEach(label => tr.append(node('th', label))); thead.append(tr);
+  const tbody = document.createElement('tbody');
+  for (const row of rows) { const tr = document.createElement('tr'); for (const value of row) { const td = document.createElement('td'); if (value instanceof Node) td.append(value); else td.textContent = String(value ?? ''); tr.append(td); } tbody.append(tr); }
+  table.append(thead, tbody); wrapper.append(table); return wrapper;
+}
+function warnings(container, values) { for (const value of values) container.append(node('p', value, 'warning-item')); }
+function renderOverview() {
+  const panel = $('#tab-overview'); panel.replaceChildren();
+  const artifact = selectedArtifact(), firmware = report.firmware;
+  panel.append(node('h3', 'Origem e identificação'), details([['Arquivo', report.source.name], ['Caminho original', report.source.path], ['Sistema do disco', report.filesystem], ['Identificação', report.serial], ['Hash da ISO', report.source.hashScope]]));
+  if (firmware) {
+    panel.append(details([['Formato', firmware.kind], ['ROMVER', firmware.romVersion], ['SHA-256', firmware.sha256]]));
+    warnings(panel, firmware.warnings);
+    if (firmware.entries.length) { panel.append(node('h3', 'Módulos identificados na ROM')); panel.append(table(['Nome', 'Offset', 'Tamanho'], firmware.entries.map(e => [e.name, '0x' + e.offset.toString(16), size(e.size)]))); }
+  }
+  if (artifact) {
+    panel.append(node('h3', 'Executável selecionado'), details([['Formato', artifact.kind.toUpperCase()], ['Processador', artifact.architecture], ['Formato de dados', artifact.bits ? artifact.bits + ' bits · ' + artifact.endianness : ''], ['Entrada', artifact.entrypoint], ['SHA-256', artifact.sha256], ['Segmentos / seções', artifact.segments ? artifact.segments.length + ' / ' + artifact.sections.length : 'Não aplicável']]));
+    warnings(panel, artifact.warnings || []);
+    if (artifact.decompilation) {
+      const d = artifact.decompilation;
+      panel.append(node('h3', 'Resultado do Ghidra'), details([['Linguagem do processador', d.language], ['Funções descobertas', d.discovered], ['Exportações tentadas', d.attempted], ['Decompiladas / falhas', d.decompiled + ' / ' + d.failed], ['Funções com avisos', d.warningFunctions || 0], ['Limite atingido', d.limited ? 'Sim; a exportação não cobre todas as funções descobertas.' : 'Não; isso não comprova que todo o código foi descoberto.'], ['Saída', d.exportDir]]));
+    }
+    if (artifact.symbols?.length) {
+      panel.append(node('h3', 'Símbolos presentes no arquivo'));
+      panel.append(table(['Nome', 'Endereço', 'Tamanho'], artifact.symbols.slice(0, 300).map(s => [s.name, s.address, s.size])));
+      panel.append(node('p', 'Mostrando até 300 símbolos nesta tabela. O relatório contém a amostra completa, limitada a 5.000 entradas de símbolos.', 'list-note'));
     }
   }
-  $('#project-count').textContent = `${state.projects.length} ${state.projects.length === 1 ? 'PROJETO' : 'PROJETOS'}`;
-  if (state.projects.length) {
-    const nodes = state.projects.map(project => {
-      const card = textElement('article', '', 'project');
-      const head = textElement('div', '', 'project-head');
-      const identity = textElement('div', '');
-      identity.append(textElement('strong', project.name), textElement('small', `${project.target} · ${new Date(project.createdAt).toLocaleString('pt-BR')}`));
-      head.append(identity, textElement('span', stages[project.stage] || project.stage, 'project-stage'));
-      card.append(head);
-      if (project.stage === 'ready') {
-        card.append(textElement('p', 'Pasta preparada. Abra o executável abaixo no computador de destino para validar o jogo.'));
-        card.append(document.createElement('p'));
-        card.lastChild.append(textElement('code', project.executable));
-        card.append(textElement('p', 'O jogo ainda não foi testado automaticamente. A ISO armazenada pode ser removida após você confirmar a importação.'));
-      } else if (project.error) card.append(textElement('p', project.error));
-      else card.append(textElement('p', 'O OpenHuey está preparando os dados. Acompanhe o registro; o tempo depende do disco e do computador.'));
-      if (project.log) {
-        const details = document.createElement('details');
-        details.append(textElement('summary', 'Ver registro do motor'), textElement('pre', project.log));
-        card.append(details);
-      }
-      return card;
-    });
-    $('#projects').replaceChildren(...nodes);
+  warnings(panel, report.warnings || []);
+  panel.append(node('h3', 'O que esta análise não comprova')); warnings(panel, report.limitations);
+}
+function renderFiles() {
+  const box = $('#file-list'); box.replaceChildren();
+  if (!report?.files.length) return box.append(node('p', 'Este projeto não contém um inventário de disco.', 'panel-note'));
+  const query = $('#file-filter').value.toLowerCase();
+  const matches = report.files.filter(f => (!$('#candidates-only').checked || f.executableCandidate) && f.path.toLowerCase().includes(query));
+  box.append(table(['Arquivo', 'Tamanho', 'Análise'], matches.slice(0, 500).map(file => {
+    const analyzed = report.artifacts.some(a => a.discEntryId === file.id);
+    const button = node('button', analyzed ? 'Analisado' : 'Extrair e analisar', 'secondary');
+    button.disabled = busy || analyzed || file.encrypted || file.sizeBytes > 512 * 1024 ** 2;
+    button.addEventListener('click', () => operation('Extraindo executável', async () => { setReport(await api.extract(report.id, file.id)); }));
+    return [file.path, size(file.sizeBytes), button];
+  })));
+  box.append(node('p', 'Mostrando ' + Math.min(500, matches.length) + ' de ' + matches.length + ' arquivos filtrados. Cada extração individual é limitada a 512 MiB. O inventário completo está no relatório JSON.', 'list-note'));
+}
+function renderStrings() {
+  const box = $('#string-list'); box.replaceChildren();
+  const source = report?.firmware || selectedArtifact();
+  if (!source?.strings) return box.append(node('p', 'Selecione um executável analisado para ver sua amostra de strings.', 'panel-note'));
+  const query = $('#string-filter').value.toLowerCase(), matches = source.strings.filter(s => s.text.toLowerCase().includes(query));
+  $('#strings-note').textContent = 'Amostra ASCII · até 3.000 strings';
+  box.append(table(['Offset', 'Texto'], matches.slice(0, 500).map(s => [s.offset, s.text])));
+  box.append(node('p', 'Mostrando ' + Math.min(500, matches.length) + ' de ' + matches.length + ' resultados. Strings não são código-fonte; textos Unicode e strings fora da amostra podem não aparecer.', 'list-note'));
+}
+async function loadFunctions() {
+  const artifact = selectedArtifact();
+  const key = report?.id + '/' + artifact?.id + '/' + artifact?.decompilation?.exportDir;
+  if (key === functionKey) return;
+  functionKey = key; functions = []; selectedFunction = '';
+  $('#code-empty').hidden = Boolean(artifact?.decompilation); $('#code-workspace').hidden = !artifact?.decompilation;
+  if (!artifact?.decompilation) return;
+  try { const loaded = await api.functions(report.id, artifact.id); if (key !== functionKey) return; functions = loaded; renderFunctions(); }
+  catch (error) { message(error.message, true); }
+}
+function renderFunctions() {
+  const query = $('#function-filter').value.toLowerCase();
+  const matches = functions.filter(f => f.name.toLowerCase().includes(query));
+  const list = $('#functions'); list.replaceChildren();
+  for (const f of matches.slice(0, 1000)) {
+    const button = node('button', f.name + (f.decompiled ? f.hasWarnings ? ' · avisos' : '' : ' · falhou'));
+    button.append(node('small', f.address)); if (f.address === selectedFunction) button.classList.add('selected');
+    button.addEventListener('click', () => { selectedFunction = f.address; $('#pseudocode').textContent = f.pseudocode || '// Não foi possível decompilar esta função.\n// ' + (f.error || 'Consulte o Ghidra.'); renderFunctions(); });
+    list.append(button);
   }
+  list.append(node('p', 'Até 1.000 funções na lista visual. A exportação completa está na pasta do projeto.', 'list-note'));
+  if (!selectedFunction && matches.length) { selectedFunction = matches[0].address; $('#pseudocode').textContent = matches[0].pseudocode || '// ' + (matches[0].error || 'Função não decompilada.'); }
+  if (!functions.length) $('#pseudocode').textContent = '// Nenhuma função foi exportada. Consulte o registro da operação e o projeto Ghidra.';
 }
-
-async function refresh() {
-  if (statusPending) return;
-  statusPending = true;
-  try {
-    state = await api('/api/status');
-    if (!selectedId || !state.uploads.some(upload => upload.id === selectedId)) selectedId = state.uploads[0]?.id;
-    $('#connection').classList.add('online');
-    $('#connection').lastChild.textContent = ' Ambiente local';
-    render();
-  } catch {
-    $('#connection').classList.remove('online');
-    $('#connection').lastChild.textContent = ' Sem conexão';
-    $('#build').disabled = true;
-  } finally { statusPending = false; }
+function showTab(name) {
+  activeTab = name;
+  document.querySelectorAll('[data-tab]').forEach(button => button.classList.toggle('active', button.dataset.tab === name));
+  for (const tab of ['overview', 'inventory', 'strings', 'pseudocode']) $('#tab-' + tab).hidden = tab !== name;
 }
-
-function sendFile(file) {
-  if (!file || uploading || state?.busy) return;
-  if (!/\.iso$/i.test(file.name)) return notice('Selecione uma ISO de PS2. PKG, CHD e arquivos compactados não são aceitos.', true);
-  if (file.size > (state?.maxUploadBytes || 9 * 1024 ** 3)) return notice('A ISO ultrapassa o limite de 9 GiB.', true);
-  uploading = true;
-  notice('');
-  $('#upload-progress').hidden = false;
-  $('#progress-fill').style.width = '0%';
-  $('#progress-text').textContent = 'Enviando ISO para análise…';
-  render();
-  const request = new XMLHttpRequest();
-  request.open('POST', `/api/uploads?name=${encodeURIComponent(file.name)}`);
-  request.setRequestHeader('Content-Type', 'application/octet-stream');
-  request.upload.onprogress = event => {
-    if (!event.lengthComputable) return;
-    const percent = Math.round(event.loaded / event.total * 100);
-    $('#progress-fill').style.width = `${percent}%`;
-    $('#progress-text').textContent = percent === 100 ? 'Lendo o disco e verificando o executável…' : `Enviando ISO · ${percent}%`;
-  };
-  const finish = () => {
-    uploading = false;
-    $('#upload-progress').hidden = true;
-    $('#iso-file').value = '';
-    refresh();
-  };
-  request.onload = () => {
+function openTools() { message('', false, '#tools-message'); $('#tools-dialog').showModal(); }
+if (!api) {
+  message('Este é um aplicativo de desktop. Abra Port RE pelo atalho instalado; esta página isolada não acessa arquivos nem executa análises.', true);
+  document.querySelectorAll('button').forEach(button => { button.disabled = true; });
+} else {
+  document.querySelectorAll('[data-kind]').forEach(button => button.addEventListener('click', async () => {
     try {
-      const result = JSON.parse(request.responseText);
-      if (request.status !== 201) throw new Error(result.error || 'Não foi possível analisar a ISO.');
-      selectedId = result.id;
-      notice(result.compatibility.supported ? 'ISO reconhecida. Você já pode preparar a pasta do jogo.' : result.compatibility.reason, !result.compatibility.supported);
-    } catch (error) { notice(error.message, true); }
-    finish();
-  };
-  request.onerror = () => { notice('O envio foi interrompido. Verifique a conexão e o espaço disponível e tente novamente.', true); finish(); };
-  request.send(file);
+      const selected = await api.choose(button.dataset.kind); if (!selected) return;
+      input = selected; $('#selected-input').hidden = false;
+      $('#input-name').textContent = input.name; $('#input-path').textContent = input.path; $('#input-size').textContent = size(input.sizeBytes); message('');
+    } catch (error) { message(error.message, true); }
+  }));
+  $('#analyze').addEventListener('click', () => input && operation('Analisando arquivo', async () => { setReport(await api.analyze(input.id)); $('#results').scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
+  $('#decompile').addEventListener('click', () => {
+    if (!report || !artifactId) return;
+    if ($('#tools-dialog').open) $('#tools-dialog').close();
+    operation('Decompilando executável', async () => { setReport(await api.decompile(report.id, artifactId)); showTab('pseudocode'); });
+  });
+  $('#artifact').addEventListener('change', event => { artifactId = event.target.value; renderOverview(); renderStrings(); loadFunctions(); setBusy(busy); });
+  document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => showTab(button.dataset.tab)));
+  $('#file-filter').addEventListener('input', renderFiles); $('#candidates-only').addEventListener('change', renderFiles);
+  $('#string-filter').addEventListener('input', renderStrings); $('#function-filter').addEventListener('input', renderFunctions);
+  $('#new-analysis').addEventListener('click', () => { report = undefined; artifactId = undefined; input = undefined; $('#results').hidden = true; $('#selected-input').hidden = true; $('#initial-empty').hidden = false; $('#breadcrumb-current').textContent = 'Nova análise'; message(''); $('#input-area').scrollIntoView({ behavior: 'smooth' }); refresh(); });
+  $('#tools-open').addEventListener('click', openTools); $('#configure-from-code').addEventListener('click', openTools); $('#tools-close').addEventListener('click', () => $('#tools-dialog').close());
+  $('#help').addEventListener('click', () => api.help('guide'));
+  for (const [selector, key] of [['#choose-ghidra', 'ghidraDir'], ['#choose-java', 'javaHome']]) $(selector).addEventListener('click', async () => { try { await api.chooseTool(key); await refresh(); } catch (error) { message(error.message, true, '#tools-message'); } });
+  $('#save-limit').addEventListener('click', async () => { try { await api.limit(Number($('#function-limit').value)); await refresh(); message('Limite de exportação salvo.', false, '#tools-message'); } catch (error) { message(error.message, true, '#tools-message'); } });
+  $('#install-tools').addEventListener('click', () => { $('#tools-dialog').close(); operation('Preparando Ghidra e Java', async () => { await api.installTools(); message('Ferramentas instaladas e verificadas. Selecione um ELF para decompilar.'); }); });
+  $('#cancel').addEventListener('click', () => api.cancel());
+  $('#open-folder').addEventListener('click', async () => { try { if (report) await api.folder(report.id); } catch (error) { message(error.message, true); } });
+  $('#export').addEventListener('click', async () => { try { if (report) { const path = await api.export(report.id); if (path) message('Relatório salvo em ' + path); } } catch (error) { message(error.message, true); } });
+  api.onProgress(progress => {
+    $('#task-message').textContent = progress.message + (progress.downloaded ? ' ' + size(progress.downloaded) + (progress.total ? ' / ' + size(progress.total) : '') : '');
+    const ratio = typeof progress.ratio === 'number' ? progress.ratio : progress.total ? progress.downloaded / progress.total : null;
+    if (ratio !== null) { $('#task-progress').max = 1; $('#task-progress').value = Math.min(1, Math.max(0, ratio)); } else $('#task-progress').removeAttribute('value');
+    if (progress.log) { currentLog = progress.log; $('#task-log').textContent = currentLog; }
+  });
+  await refresh().catch(error => message(error.message, true));
 }
-
-$('#iso-file').addEventListener('change', event => sendFile(event.target.files[0]));
-$('#stored-iso').addEventListener('change', event => { selectedId = event.target.value; notice(''); render(); });
-for (const eventName of ['dragenter', 'dragover']) $('#dropzone').addEventListener(eventName, event => { event.preventDefault(); $('#dropzone').classList.add('dragging'); });
-for (const eventName of ['dragleave', 'drop']) $('#dropzone').addEventListener(eventName, event => { event.preventDefault(); $('#dropzone').classList.remove('dragging'); });
-$('#dropzone').addEventListener('drop', event => sendFile(event.dataTransfer.files[0]));
-$('#build').addEventListener('click', async () => {
-  if (starting || !selectedId) return;
-  starting = true;
-  notice('');
-  render();
-  try {
-    await api('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ uploadId: selectedId, name: $('#project-name').value }) });
-    $('#projects-title').scrollIntoView({ behavior: 'smooth', block: 'center' });
-  } catch (error) { notice(error.message, true); }
-  finally { starting = false; await refresh(); }
-});
-$('#remove-upload').addEventListener('click', async () => {
-  if (!selectedId) return;
-  try {
-    await api(`/api/uploads/${selectedId}`, { method: 'DELETE' });
-    selectedId = undefined;
-    notice('ISO removida do armazenamento do Port. O arquivo no seu computador e as pastas já preparadas foram preservados.');
-    await refresh();
-  } catch (error) { notice(error.message, true); }
-});
-await refresh();
-setInterval(refresh, 2000);

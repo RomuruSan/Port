@@ -1,337 +1,174 @@
-# Port — Haunting Ground para PC
+# Port RE — Engenharia reversa de PS2 e PS3
 
-Aplicativo local para analisar uma ISO de **Haunting Ground (PS2, EUA)** e preparar uma pasta com o motor nativo [OpenHuey](https://github.com/ArnautDaniel/OpenHuey) e os dados importados do jogo. Você usa o navegador para fazer a preparação e depois abre o executável resultante para jogar.
+Aplicativo de desktop para **Windows 10/11 de 64 bits**, com instalador, interface em português e análise local de ISO/UDF, executáveis ELF e dumps de BIOS/flash.
 
-Esta primeira versão integra um projeto nativo específico. **Não é um conversor universal de ISO/PKG**, não usa PCSX2/RPCS3 e ainda não oferece suporte a outros jogos ou a PS3. Os dados do jogo não são incluídos.
+**O Port RE não recupera integralmente o código-fonte original de um jogo.** Ele identifica e extrai executáveis e integra o Ghidra para gerar assembly e pseudocódigo aproximado. Nomes, comentários, tipos e estruturas removidos na compilação podem estar irrecuperáveis. A BIOS contém firmware do console, não os arquivos-fonte dos jogos.
 
-**Escolha por onde começar:**
+Esta versão substitui o antigo preparador de Haunting Ground/OpenHuey. Não usa emuladores, não converte jogos automaticamente em ports nativos e não inclui jogos, BIOS ou chaves.
 
-- [Antes de começar](#antes-de-começar)
-- [Passo a passo no Windows](#passo-a-passo-no-windows)
-- [Passo a passo no Linux](#passo-a-passo-no-linux)
-- [Selecionar a ISO e preparar o jogo](#selecionar-a-iso-e-preparar-o-jogo)
-- [Abrir o jogo e usar novamente](#abrir-o-jogo-e-usar-novamente)
-- [Resolver problemas comuns](#resolver-problemas-comuns)
-- [Ambiente de desenvolvimento na nuvem](#ambiente-de-desenvolvimento-na-nuvem)
+## 1. Baixar e instalar no Windows
 
-## Antes de começar
+1. Abra a página de [Releases](https://github.com/RomuruSan/Port/releases).
+2. Em **Assets** da versão 0.2.0, baixe **`Port-RE-0.2.0-Windows-x64-Setup.exe`**. Não selecione os arquivos “Source code”.
+3. Execute o instalador, escolha a pasta e conclua a instalação.
+4. Abra **Port RE** pelo atalho no menu Iniciar ou na área de trabalho.
 
-Separe estes itens:
+O instalador inclui o runtime do aplicativo e o 7-Zip. **Você não precisa instalar Node.js, npm nem iniciar um servidor no navegador.** A instalação é por usuário e mantém os dados de análise separados do programa.
 
-| Item | O que você precisa |
+O instalador não tem assinatura de certificado de editor. O Windows pode informar que o editor é desconhecido. Confira a origem e o SHA-256 publicado com a release; não desative as proteções do sistema.
+
+Se ainda não houver uma release disponível, consulte os **Artifacts** das execuções bem-sucedidas do workflow [Windows installer](https://github.com/RomuruSan/Port/actions/workflows/windows-installer.yml). É necessário estar conectado ao GitHub para baixar artefatos.
+
+## 2. Fazer a primeira análise
+
+Na tela inicial, escolha um dos tipos:
+
+| Botão | Entrada | Resultado |
+| --- | --- | --- |
+| **Imagem ISO → Selecionar ISO** | ISO9660/UDF legível, `.iso` ou `.img` | Inventário, identificação de PS2/PS3 e tentativa de extrair o executável principal |
+| **Executável → Selecionar arquivo** | ELF acessível, `EBOOT.BIN`, SELF, SPRX ou IRX | Formato, processador, segmentos, seções, símbolos presentes, hash e amostra de strings |
+| **BIOS / flash → Selecionar dump** | Um dump BIN, ROM ou IMG que você já tenha | ROMDIR/ROMVER de PS2 quando válidas, módulos, hash e strings; outros dumps ficam como não confirmados |
+
+1. Selecione o arquivo no diálogo do Windows.
+2. Confira nome e caminho na interface.
+3. Clique em **Analisar arquivo** e aguarde.
+4. Confira **Visão geral**. O projeto também aparece em **Projetos recentes**.
+
+Os originais são lidos, e os resultados ficam na pasta de dados do aplicativo. O Port RE não executa o jogo nem a BIOS. A ISO é lida sem carregar a imagem inteira na memória.
+
+## 3. Entender as abas
+
+- **Visão geral:** formato, processador, entrada, estruturas, hash e limitações. Para firmware, ROMVER e módulos identificados.
+- **Arquivos do disco:** inventário da ISO. Desmarque **Somente candidatos a executável** para pesquisar outros arquivos. Clique em **Extrair e analisar** para analisar outro arquivo.
+- **Strings:** amostra de textos ASCII com offsets. Strings não são código-fonte; textos Unicode e strings fora da amostra podem não aparecer.
+- **Pseudocódigo:** funções exportadas depois de executar o Ghidra.
+
+No PS2, o boot ELF normalmente é identificado pelo `BOOT2` em `SYSTEM.CNF`. No PS3, `EBOOT.BIN` pode ser um contêiner **SELF**, não um ELF acessível. O app identifica essa situação e não habilita sua decompilação integrada.
+
+**Não há descriptografia de SELF, PKG, discos ou regiões de flash.** Forneça um ELF acessível para a decompilação. Renomear um arquivo criptografado para `.elf` não resolve essa limitação.
+
+## 4. Preparar o Ghidra e o Java
+
+A análise básica já funciona sem Ghidra. Para gerar pseudocódigo:
+
+1. Clique em **Ferramentas** na lateral.
+2. No Windows x64, clique em **Baixar e configurar Ghidra + Java**.
+3. Reserve pelo menos **2 GiB livres** para as ferramentas e mais espaço para os projetos.
+4. Aguarde os downloads e a extração, mantendo a conexão.
+5. O app verifica os SHA-256 oficiais fixados antes de usar os arquivos. Um download com hash incorreto é descartado.
+6. Ao terminar, confira o indicador **Ghidra disponível**.
+
+São usados **Ghidra 12.1.4** e **Temurin JDK 21.0.12.1**, dos repositórios oficiais. Eles ficam na pasta de dados do app, sem precisar alterar o Java global do Windows.
+
+Se já tem as ferramentas, use **Selecionar pasta existente**. Para Ghidra, escolha a pasta extraída que contém `Ghidra` e `support`. Para JDK, escolha a pasta que contém `bin/java.exe`, não `bin` em si. O Java precisa atender aos requisitos da sua distribuição Ghidra. Um pacote “Source code” não é uma distribuição pronta.
+
+A instalação automática é para Windows x64. No desenvolvimento Linux, configure as pastas manualmente.
+
+## 5. Decompilar o executável
+
+1. Abra um projeto analisado.
+2. Em **EXECUTÁVEL**, escolha um ELF analisável.
+3. Confira se o Ghidra está disponível.
+4. Clique em **Decompilar com Ghidra**.
+5. Acompanhe **Ver registro da operação**. A autoanálise pode levar minutos e pode ser cancelada.
+6. Abra **Pseudocódigo** e selecione uma função na lista.
+
+Cada exportação cria uma pasta nova e mantém um projeto Ghidra para investigação manual. Pseudocódigo pode conter erros e não é um projeto pronto para recompilar ou portar.
+
+O perfil genérico MIPS usa registradores de 64 bits, endereços de 32 bits e ABI o32. Ele não implementa automaticamente todas as extensões MMI/VU do R5900. SPU pode exigir um módulo adicional, não disponível na instalação padrão do Ghidra.
+
+| Contagem | Significado |
 | --- | --- |
-| Computador | Windows x64 ou Linux x64, com ambiente gráfico para abrir o jogo |
-| Node.js | Versão **22.12 ou mais recente**; o desenvolvimento foi validado com Node 24 |
-| Código do Port | A pasta deste repositório, contendo `package.json` |
-| Motor OpenHuey | A distribuição **do mesmo sistema** em que você vai preparar e abrir o jogo |
-| Jogo | Sua ISO da edição americana de Haunting Ground, identificada como `SLUS_210.75` |
-| Espaço livre | Espaço para uma cópia da ISO e para os dados importados; a ISO pode ter até **9 GiB** |
+| **Funções descobertas** | Reconhecidas por esta autoanálise; outras podem continuar não identificadas |
+| **Exportações tentadas** | Funções incluídas na tentativa de exportação |
+| **Decompiladas** | O Ghidra produziu pseudocódigo; ele ainda precisa ser revisado |
+| **Funções com avisos** | Pseudocódigo com avisos ou instruções problemáticas |
+| **Falhas** | O Ghidra não produziu pseudocódigo para essas funções |
+| **Limite atingido** | A exportação não cobriu todas as funções descobertas ou atingiu outro limite |
 
-O motor é o programa que executa o jogo nativamente. O **Port** verifica a ISO e coordena a preparação; o **OpenHuey** faz a importação dos dados e executa o jogo. No motor fixado por este projeto, a execução gráfica solicita **OpenGL 4.6**.
+Em **Ferramentas**, ajuste de **1 a 10.000 funções por exportação**. O padrão é 1.000. A lista visual mostra até 1.000 funções por filtro; os arquivos contêm toda a exportação dentro dos limites configurados.
 
-Se você tem somente o disco físico, primeiro precisa gerar uma imagem `.iso` do seu disco usando um computador com leitor compatível. O Port não lê o DVD diretamente. Arquivos `.pkg`, `.chd`, `.zip` e `.rar` não são aceitos como entrada.
+O exportador limita cada função a 20 segundos, a autoanálise a 5 minutos e a operação a 30 minutos. Assembly é limitado a 50.000 instruções por função. Esses limites podem deixar resultados parciais. Uma operação sem falhas não comprova que todo o código foi recuperado.
 
-**Situação da validação:** o aplicativo e a compilação Linux foram testados, mas ainda falta validar a importação com uma ISO real, a jogabilidade e a execução no Windows. “Pasta preparada” confirma a importação, não que todas as partes do jogo funcionam.
+## 6. Exportar e localizar os resultados
 
-O GitHub contém o código para você baixar. Abrir a página do repositório não inicia o aplicativo. Os passos abaixo executam o Port no seu próprio computador.
-
-## Passo a passo no Windows
-
-### 1. Instale o Node.js
-
-1. Acesse o [site oficial do Node.js](https://nodejs.org/).
-2. Instale uma versão LTS que atenda ao requisito de versão acima, incluindo o npm.
-3. Depois da instalação, feche e abra novamente o PowerShell.
-4. Confira a instalação:
-
-```powershell
-node --version
-npm.cmd --version
-```
-
-Os dois comandos devem mostrar um número de versão. Usamos `npm.cmd` neste guia para evitar o bloqueio de `npm.ps1` em algumas configurações do PowerShell.
-
-### 2. Baixe o Port
-
-1. Abra [RomuruSan/Port](https://github.com/RomuruSan/Port).
-2. Clique em **Code → Download ZIP**.
-3. Extraia o ZIP. Neste exemplo, vamos usar `C:\Jogos\Port-main`.
-4. Confira se `package.json`, `README.md`, `src` e `public` estão diretamente nessa pasta. Se aparecer outra pasta `Port-main` dentro dela, use a pasta interna que contém `package.json`.
-
-Não execute o projeto de dentro do ZIP.
-
-### 3. Baixe o motor OpenHuey para Windows
-
-1. Abra a [página de releases do OpenHuey](https://github.com/ArnautDaniel/OpenHuey/releases/tag/openhuey-latest).
-2. Expanda **Assets**, se necessário.
-3. Baixe o arquivo `.zip` cujo nome contém **`windows-x64`**. O número da versão pode mudar. A opção **Source code** contém código-fonte, não o motor pronto para executar.
-4. Extraia o pacote completo. Neste exemplo, vamos usar `C:\Jogos\OpenHuey`.
-5. Confira a pasta. Ela deve conter `openhuey.exe`, a pasta `scripts` com `prelude.fs` e as DLLs fornecidas pela distribuição. Preserve também `licences` e os demais arquivos do pacote.
-
-Se o ZIP criar uma pasta adicional, use como caminho a pasta que contém **diretamente** `openhuey.exe`. Não copie apenas o EXE: ele precisa dos scripts e das bibliotecas que o acompanham.
-
-### 4. Instale e inicie o Port
-
-Abra o PowerShell e execute os comandos abaixo. Se você escolheu outras pastas, ajuste os dois caminhos:
-
-```powershell
-cd 'C:\Jogos\Port-main'
-npm.cmd ci --ignore-scripts --no-audit --no-fund
-$env:PORT_ENGINE_DIR = 'C:\Jogos\OpenHuey'
-npm.cmd start
-```
-
-O comando `npm.cmd ci` prepara o projeto usando o arquivo de lock. `PORT_ENGINE_DIR` informa onde você extraiu o motor. O último comando inicia o servidor local do Port.
-
-Quando aparecer **“Port iniciado na porta 4317”**, mantenha essa janela aberta. Se ela for fechada, a interface deixa de responder.
-
-### 5. Abra a interface
-
-No navegador **desse mesmo computador**, digite este endereço na barra de endereços:
+- **Exportar relatório:** salva Markdown ou JSON pelo diálogo do Windows.
+- **Abrir pasta:** abre a pasta do projeto no Explorador.
 
 ```text
-http://127.0.0.1:4317
+projects/<identificador>/
+  report.json                  # estruturas, hashes, strings e resultados
+  evidence/                    # SYSTEM.CNF ou PARAM.SFO
+  artifacts/                   # executáveis extraídos
+  ghidra/<identificador>/
+    project/                   # projeto Ghidra para continuar a análise
+    export/
+      pseudocode.c             # aproximação; pode não compilar
+      disassembly.txt          # assembly das funções exportadas
+      functions.json           # resultados individuais
+      summary.json             # contagens e limitações
 ```
 
-Confira se o canto superior mostra **Ambiente local** e se a área do OpenHuey não apresenta um aviso de configuração pendente. Continue em [Selecionar a ISO e preparar o jogo](#selecionar-a-iso-e-preparar-o-jogo).
+No Windows instalado, os dados ficam por padrão em **`%APPDATA%\Port RE`**. Use **Abrir pasta** para localizar um projeto. A desinstalação preserva os dados; faça backup do que quiser guardar.
 
-## Passo a passo no Linux
+Relatórios podem conter caminhos pessoais, strings e pseudocódigo dos arquivos analisados. Eles não são enviados automaticamente ao GitHub.
 
-### 1. Instale o Node.js e baixe o Port
+## 7. O que a análise de BIOS faz
 
-Instale Node.js **22.12 ou mais recente**, com npm, usando uma opção apropriada à sua distribuição. Confira:
+Uma ROMDIR válida permite identificar módulos e a ROMVER de PS2. O app também calcula SHA-256 e coleta strings. Isso não recupera os arquivos-fonte dos jogos. Módulos de BIOS não são tratados automaticamente como ELF.
 
-```sh
-node --version
-npm --version
-```
+Dumps de flash de PS3 têm layouts próprios e podem conter assinaturas e regiões criptografadas. Sem identificação válida, o app mostra **Não confirmada**, em vez de inventar um modelo ou uma versão.
 
-Baixe o projeto em **Code → Download ZIP** no GitHub e extraia a pasta. Se você já usa Git, pode fazer o download assim:
+## Problemas comuns
 
-```sh
-git clone https://github.com/RomuruSan/Port.git
-cd Port
-```
+| Situação | Próxima ação |
+| --- | --- |
+| Decompilação desabilitada | Selecione um ELF analisável e configure Ghidra/JDK. ISO, BIOS bruta, PKG e SELF não são entradas diretas do decompilador integrado. |
+| ISO não abre | Confira se é ISO9660/UDF legível. Criptografia, formatos diferentes e imagens truncadas podem impedir a leitura. |
+| Download das ferramentas falhou | Confira conexão e espaço livre. Tente novamente depois de resolver a causa. Arquivos com checksum incorreto não são reutilizados. |
+| JDK compatível não encontrado | Selecione a pasta do JDK correto. JRE sozinho ou Java antigo pode não atender ao Ghidra. |
+| Função com avisos ou `halt_baddata` | Existem instruções ou fluxos não interpretados corretamente. Revise o processador e o projeto no Ghidra. |
+| O executável é SELF | O app não descriptografa o contêiner. É necessário um ELF acessível. |
+| Firmware não identificado | A identificação exige estruturas válidas, não só nome ou tamanho. Hashes e strings são evidência inicial. |
+| Análise demora ou foi cancelada | Consulte o registro. Entradas originais são preservadas e resultados parciais não são declarados completos. |
 
-Se baixou o ZIP, abra um terminal na pasta extraída que contém `package.json`. Se já tem o checkout, use a pasta existente.
+## Desenvolvimento e instalador
 
-### 2. Baixe o motor OpenHuey para Linux
-
-1. Abra a [página de releases do OpenHuey](https://github.com/ArnautDaniel/OpenHuey/releases/tag/openhuey-latest).
-2. Em **Assets**, baixe o pacote `.tar.gz` cujo nome contém **`linux-x86_64`**. Não selecione **Source code**.
-3. Extraia o pacote completo. Neste exemplo, a pasta escolhida é `~/Jogos/OpenHuey`.
-4. Confirme que essa pasta contém diretamente `openhuey`, `scripts/prelude.fs`, `lib` e as licenças fornecidas pelo projeto. Se houver outra pasta dentro dela, ajuste o caminho para a pasta que contém o executável.
-
-As releases do OpenHuey são externas e podem mudar. A compatibilidade com sua distribuição depende dos requisitos dessa release e das bibliotecas gráficas disponíveis no computador.
-
-### 3. Instale e inicie o Port
-
-No terminal, dentro da pasta do Port que contém `package.json`, execute:
+Para desenvolver, use Node.js >= 22.12 (validado com Node 24). Isso **não é exigido do usuário do instalador**.
 
 ```sh
 npm ci --ignore-scripts --no-audit --no-fund
-PORT_ENGINE_DIR="$HOME/Jogos/OpenHuey" npm start
-```
-
-Troque o caminho se você extraiu o motor em outro local. Se o executável perdeu a permissão de execução durante a extração, restaure-a antes de iniciar:
-
-```sh
-chmod +x "$HOME/Jogos/OpenHuey/openhuey"
-```
-
-Quando aparecer **“Port iniciado na porta 4317”**, mantenha o terminal aberto. No navegador do mesmo computador, digite `http://127.0.0.1:4317` e continue abaixo.
-
-## Selecionar a ISO e preparar o jogo
-
-### 1. Selecione o arquivo
-
-Na área **Comece pelo disco**, clique em **escolha um arquivo** ou arraste sua ISO para a caixa. Selecione o arquivo `.iso`, não a pasta onde ele está.
-
-O Port armazena uma cópia da ISO e calcula seu SHA-256 enquanto recebe o arquivo. Quando o aplicativo está rodando no seu PC, esse envio acontece entre o navegador e o servidor local do próprio PC. A ISO não é publicada no GitHub.
-
-Espere o envio terminar e a análise do disco aparecer. Não feche o terminal durante a operação.
-
-### 2. Confira a compatibilidade
-
-A seção **Conferência da imagem** mostra região, executável, tamanho e checksums. Para este perfil, o executável precisa ter:
-
-| Verificação | Valor esperado |
-| --- | --- |
-| Edição | Haunting Ground — EUA |
-| Identificação | `SLUS_210.75` |
-| Tamanho do executável | `3650608` bytes |
-| CRC32 do executável | `A295AF2B` |
-| Arquivo de dados do disco | `DATA.CVM` |
-
-Você não precisa digitar esses valores: a análise é automática. O tamanho acima é o do **executável dentro do disco**, não o tamanho total da ISO. O SHA-256 mostrado identifica a imagem enviada e não precisa ser igual ao CRC32 da tabela.
-
-- **RECONHECIDA:** a imagem passou pelas verificações deste perfil; você pode avançar se o motor estiver disponível.
-- **NÃO COMPATÍVEL:** leia o motivo exibido. Outras regiões, revisões ou modificações no executável podem ser recusadas, mesmo que o nome do arquivo diga “Haunting Ground”. Renomear a ISO não muda seu conteúdo.
-
-Se você já enviou mais de uma imagem, use **ISOs já analisadas** para escolher uma delas sem enviar novamente.
-
-### 3. Inicie a preparação
-
-1. Na área **Prepare para PC**, escolha um nome para o projeto ou mantenha **Haunting Ground**.
-2. Confira o **destino desta preparação**: ele corresponde ao sistema no qual o Port está rodando.
-3. Clique em **Preparar jogo para PC**.
-4. Acompanhe a área **Preparações**. O aplicativo primeiro copia o motor e depois importa os dados da ISO.
-5. Se precisar acompanhar o que está acontecendo, abra **Ver registro do motor** no cartão da preparação.
-
-O tempo depende do computador e dos dados do disco. Não há uma estimativa fixa. O aplicativo aceita uma operação por vez; aguarde a atual terminar antes de enviar outra ISO ou iniciar outro projeto.
-
-O botão fica desabilitado quando falta uma ISO compatível, o motor não está configurado ou outra operação está em andamento.
-
-### 4. Confira o resultado
-
-Quando aparecer **Pasta preparada**, o cartão mostrará o caminho completo do executável resultante. Copie esse caminho para localizar a pasta no seu computador.
-
-Cada preparação recebe uma pasta nova com um identificador próprio. O nome escolhido na interface serve para identificar o projeto; não é o nome da pasta no disco. Por padrão, o resultado fica em:
-
-```text
-Port-main/                         # ou Port/, se você usou git clone
-  .port-data/
-    projects/
-      <identificador-do-projeto>/
-        openhuey.exe               # Windows
-        openhuey                   # Linux, no lugar do EXE
-        scripts/
-        lib/ ou arquivos .dll     # conforme a distribuição do motor
-        licences/
-        library/                   # dados importados do seu disco
-        port-project.json          # informações da preparação
-```
-
-No Linux, pastas cujo nome começa com ponto costumam ficar ocultas. Use **Ctrl+H** no gerenciador de arquivos para mostrar `.port-data`, se necessário.
-
-Uma preparação que falha não é marcada como pronta. Consulte o registro e resolva o motivo antes de criar outra. **Pasta preparada** confirma que o importador terminou e criou o manifesto da biblioteca; ainda é necessário abrir e testar o jogo.
-
-## Abrir o jogo e usar novamente
-
-### Abrir o jogo preparado
-
-1. Localize a pasta indicada no cartão da preparação.
-2. No Windows, abra `openhuey.exe`. No Linux, execute `openhuey` em um ambiente gráfico compatível.
-3. Mantenha o executável junto de `scripts`, `library`, bibliotecas e licenças. Se quiser mover o resultado, mova **a pasta inteira**.
-4. Verifique imagem, áudio, controles, troca de salas e salvamento. O aplicativo não faz essa validação automaticamente.
-
-Depois de uma importação concluída, o motor usa os dados de `library/`; a ISO não precisa ser selecionada toda vez. Você pode abrir o executável preparado sem manter o servidor do Port funcionando.
-
-O resultado serve para o **mesmo sistema** usado na preparação. Para preparar no Windows, rode o Port no Windows com o motor Windows. Uma preparação feita no Linux não produz um EXE Windows.
-
-### Fechar e abrir o Port novamente
-
-Depois que a operação atual terminar, volte ao terminal do Port e pressione **Ctrl+C** para encerrar o servidor. As ISOs armazenadas e as preparações já concluídas continuam no disco.
-
-Nas próximas vezes, não é necessário baixar tudo nem executar `npm ci` novamente. Abra o terminal na pasta do projeto e repita a configuração do caminho do motor e o comando de inicialização.
-
-**Windows — PowerShell:**
-
-```powershell
-cd 'C:\Jogos\Port-main'
-$env:PORT_ENGINE_DIR = 'C:\Jogos\OpenHuey'
-npm.cmd start
-```
-
-**Linux:**
-
-```sh
-cd /caminho/onde/voce/guardou/Port
-PORT_ENGINE_DIR="$HOME/Jogos/OpenHuey" npm start
-```
-
-No exemplo Linux, substitua o caminho depois de `cd` pelo local real do projeto. No Windows, ajuste as duas pastas se usou locais diferentes. Depois, abra novamente o endereço local no navegador. O caminho do motor definido nesses comandos não é salvo automaticamente entre terminais.
-
-### Liberar espaço e guardar seus dados
-
-- **Remover ISO armazenada**, na interface, apaga a cópia mantida pelo Port. Seu arquivo original e as pastas já preparadas são preservados.
-- A cópia da ISO fica em `.port-data/uploads/`; os resultados ficam em `.port-data/projects/`. Faça backup da pasta completa de uma preparação que queira guardar, incluindo `user/` quando ela for criada pelo motor para saves e configurações.
-- O jogo preparado contém dados importados do seu disco. Mantenha esses dados separados do código do repositório; `.port-data/` já é ignorada pelo Git.
-
-## Resolver problemas comuns
-
-| Problema | Como resolver |
-| --- | --- |
-| `node` ou `npm` não é reconhecido | Instale o Node.js com npm e abra um terminal novo. Confira `node --version` e `npm.cmd --version` no Windows, ou `npm --version` no Linux. |
-| O PowerShell bloqueia `npm.ps1` | Use `npm.cmd` nos comandos, como neste guia. Não é necessário alterar a política de execução do PowerShell. |
-| Erro dizendo que `package.json` não existe | O terminal está na pasta errada. Entre na pasta extraída do Port que contém esse arquivo e repita o comando. |
-| A página não abre ou mostra “Sem conexão” | Confirme que o terminal continua aberto e que o servidor informou a porta 4317. Digite o endereço no navegador do mesmo computador em que o comando está rodando. |
-| `EADDRINUSE` ou “porta em uso” | O Port pode já estar aberto em outro terminal. Use a instância existente ou encerre-a com Ctrl+C antes de iniciar outra. Também é possível escolher outra porta, conforme o exemplo abaixo. |
-| Motor nativo não configurado | Confira se `PORT_ENGINE_DIR` aponta para a pasta que contém diretamente `openhuey.exe` ou `openhuey`, além de `scripts/prelude.fs`. Ajuste o caminho e reinicie o servidor no mesmo terminal onde definiu a variável. |
-| ISO não compatível | Leia o motivo na conferência da imagem. Este perfil aceita a edição americana e o executável exato da tabela acima. Outra região ou um executável modificado precisa de outro perfil. |
-| Falta de espaço | Libere espaço na unidade onde o Port guarda os dados. A verificação inicial reserva pelo menos duas vezes o tamanho da ISO mais 1 GiB; os dados convertidos ainda podem exigir mais espaço. |
-| Preparação interrompida | Abra **Ver registro do motor**. Confira os arquivos do motor e o espaço disponível. Se o app foi fechado durante a importação, inicie um novo projeto com a ISO já analisada. |
-| O jogo não abre, falta uma DLL ou uma biblioteca `.so` | Preserve a pasta completa do motor e do resultado. Use o pacote do sistema correto e confira os requisitos da release do OpenHuey. |
-| Erro de contexto OpenGL | A versão do motor fixada no projeto solicita OpenGL 4.6. Confira o suporte da GPU e do driver e execute em um desktop com suporte gráfico. |
-
-Para usar outra porta, por exemplo **4320**, no Windows:
-
-```powershell
-$env:PORT = '4320'
-$env:PORT_ENGINE_DIR = 'C:\Jogos\OpenHuey'
-npm.cmd start
-```
-
-No Linux:
-
-```sh
-PORT=4320 PORT_ENGINE_DIR="$HOME/Jogos/OpenHuey" npm start
-```
-
-Nesse caso, digite `http://127.0.0.1:4320` no navegador do seu computador.
-
-## Ambiente de desenvolvimento na nuvem
-
-Esta seção é para o ambiente em `/workspace/Port`. Para usar o aplicativo no seu PC, siga os passos Windows ou Linux acima. A interface do onboarding na nuvem não oferece uma prévia gráfica do jogo.
-
-Se o ambiente preparado foi restaurado e o motor está disponível no cache, basta iniciar o aplicativo:
-
-```sh
-cd /workspace/Port
-npm ci --ignore-scripts --no-audit --no-fund
+node node_modules/electron/install.js
+npm test
 npm start
 ```
 
-Para reproduzir a instalação do motor nesse ambiente Linux:
+Electron 44 usa o instalador explícito acima. Em ambientes que precisam de proxy, use `node --use-env-proxy node_modules/electron/install.js`. Preserve verificações TLS e checksums.
+
+Para gerar o instalador:
 
 ```sh
-cd /workspace/Port
-python3 tools/setup_native.py
+npm run dist:win
 ```
 
-O instalador compila o OpenHuey no commit `fa1da63a21169f35eaeb98005c15ed2e3246f2d6`, usando CMake 3.31.10, Ninja 1.13.0, SDL3 e sndio dos pacotes assinados Debian 13. Todas as ferramentas, bibliotecas e saídas ficam em `/workspace/.cache/port`, fora do checkout; não usa `sudo`, não altera fontes ou arquivos de lock existentes e mantém a verificação de assinatura/checksum/TLS. Usa até quatro processos de compilação.
+O arquivo fica em `dist/Port-RE-0.2.0-Windows-x64-Setup.exe`. O workflow Windows executa os testes e uma verificação de inicialização do app empacotado antes de publicar artefatos. O build é sem assinatura de editor.
 
-Esse instalador é para Linux x64 com glibc >= 2.38 e ferramentas Debian (`cc`, `git`, Python com venv, `dpkg-deb` e APT). Não execute esse instalador no Windows. O binário compilado depende da versão de glibc da máquina onde foi criado e de bibliotecas de desktop disponíveis no destino. Os filmes usam o FFmpeg do sistema. Não é uma compilação universal para todas as distribuições Linux.
-
-O cache `OpenHuey/` é uma dependência de compilação, não um segundo projeto do usuário. Um cache alterado é preservado e bloqueia a substituição; use outro `PORT_CACHE_DIR` para uma instalação independente.
-
-As releases externas podem mudar: registre sua versão e teste a importação. A versão de desenvolvimento validada nesta tarefa está fixada no instalador acima; a distribuição Windows e a jogabilidade ainda não foram validadas aqui.
-
-## Dados e configuração
-
-| Variável | Padrão | Uso |
-| --- | --- | --- |
-| `PORT` | `4317` | Porta local do aplicativo |
-| `PORT_CACHE_DIR` | `../.cache/port` relativo ao checkout | Ferramentas e compilação do motor |
-| `PORT_ENGINE_DIR` | `<cache>/engine` | Distribuição OpenHuey do sistema atual |
-| `PORT_DATA_DIR` | `.port-data/` no checkout | ISOs, metadados e preparações |
-
-Não é necessária nenhuma credencial. As variáveis devem ser definidas no ambiente do terminal **antes de iniciar o servidor**; arquivos `.env` não são carregados automaticamente. Os caminhos padrão da tabela são relativos ao projeto; para valores personalizados, prefira caminhos absolutos. O servidor escuta somente na interface local e mantém os dados no computador em que está executando.
-
-## Desenvolvimento e validação
+Para validar a integração real com Ghidra em pequenos programas sintéticos:
 
 ```sh
-npm run dev
-npm test
-/workspace/.cache/port/tools/bin/ctest --test-dir /workspace/.cache/port/build -R '^test_' --output-on-failure
+PORT_RE_GHIDRA_DIR=/caminho/para/ghidra npm run verify:ghidra
 ```
 
-Os testes do Port usam pequenas ISOs sintéticas e um importador de teste para verificar análise de arquivos, limites, bloqueio de edições incompatíveis, persistência, isolamento das pastas e tratamento de falhas. Essas fixtures **não são jogos** e não demonstram que Haunting Ground funciona. O importador de teste Unix não é executado em Windows.
+É necessário JDK compatível. Os testes não usam jogos comerciais: comprovam a integração com MIPS/PowerPC básicos, não a decompilação de todos os jogos de PS2/PS3.
 
-Os quatro testes `test_*` do OpenHuey exercitam a linguagem e o núcleo de atores sem dados do jogo. Os outros testes de jogabilidade e conversão dependem dos dados originais. Não são desativados nem apresentados como aprovados quando os dados não estão disponíveis. Ainda é necessário importar a ISO real e testar gráficos, áudio, controles e progresso do jogo.
+### Ambiente de desenvolvimento na nuvem
 
-Cada tarefa de nuvem já é isolada. Use este checkout existente; não crie um Git worktree para iniciar o desenvolvimento.
+`npm start` usa `../.cache/port-re/dev-data` durante desenvolvimento. O instalador usa a pasta de dados do usuário. `PORT_RE_DATA_DIR` escolhe outro diretório; `PORT_RE_GHIDRA_DIR` indica um Ghidra existente e `JAVA_HOME` um JDK.
 
-## Créditos
+A interface desktop precisa de display. Em contêiner Linux sem desktop, use Xvfb. `PORT_RE_DISABLE_SANDBOX=1` existe somente para testes nesse ambiente; o instalador Windows não usa essa opção. Não é uma página web hospedada nem uma prévia de localhost.
 
-O Port coordena análise e preparação; a implementação nativa de Haunting Ground é do **OpenHuey**, de ArnautDaniel e colaboradores, sob GPLv3. As licenças do motor e de suas bibliotecas são preservadas na distribuição e nas pastas preparadas. Este projeto não é afiliado à Capcom ou à Sony.
+Cada tarefa de nuvem já é isolada. Use o checkout existente em `/workspace/Port`; não crie um Git worktree.
+
+## Componentes
+
+Consulte [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). São usados Electron, 7-Zip e, opcionalmente, Ghidra e Temurin JDK. Cada componente mantém sua licença. Este projeto não é afiliado à Sony.

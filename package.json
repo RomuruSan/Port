@@ -1,14 +1,66 @@
 {
-  "name": "port-haunting-ground",
-  "version": "0.1.0",
+  "name": "port-re",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Preparação de Haunting Ground para PC usando o motor nativo OpenHuey.",
-  "engines": { "node": ">=22.12.0" },
+  "description": "Aplicativo desktop para análise e engenharia reversa de arquivos de PS2 e PS3.",
+  "main": "desktop/main.cjs",
+  "author": "RomuruSan",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
+    "start": "node tools/run-desktop.mjs",
+    "dev": "node tools/run-desktop.mjs",
     "test": "node --test",
-    "native:setup": "python3 tools/setup_native.py"
+    "dist:win": "electron-builder --win nsis --x64 --publish never",
+    "dist:linux": "electron-builder --linux dir --x64 --publish never",
+    "verify:ghidra": "node tools/verify-ghidra.mjs"
+  },
+  "build": {
+    "appId": "io.github.romurusan.portre",
+    "productName": "Port RE",
+    "artifactName": "Port-RE-${version}-Windows-x64-Setup.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "desktop/**",
+      "src/**",
+      "public/**",
+      "ghidra_scripts/**",
+      "package.json",
+      "README.md",
+      "THIRD_PARTY_NOTICES.md"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "ghidra_scripts/**",
+      "node_modules/7zip-bin-full/**"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "signExecutable": false,
+      "icon": "build/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "devDependencies": {
+    "electron": "44.9.1",
+    "electron-builder": "26.15.3"
+  },
+  "dependencies": {
+    "7zip-bin-full": "26.4.1",
+    "extract-zip": "2.0.1"
   }
 }
